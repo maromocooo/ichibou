@@ -10,7 +10,25 @@ use sha2::{Digest, Sha256};
 use crate::model::*;
 
 pub const DIR: &str = ".aperture";
-pub const LOCAL_DIR: &str = ".aperture/local";
+
+/// Where Aperture keeps its own state for all projects. It is deliberately
+/// outside every workspace: approvals and verdicts live there, and an agent
+/// that can write to the workspace must not be able to rewrite them.
+/// `APERTURE_STATE_DIR` overrides the location (used by tests).
+pub fn state_base() -> PathBuf {
+    if let Some(dir) = std::env::var_os("APERTURE_STATE_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(dir);
+    }
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
+    if cfg!(target_os = "macos") {
+        home.join("Library/Application Support/Aperture/projects")
+    } else {
+        match std::env::var_os("XDG_STATE_HOME").filter(|d| !d.is_empty()) {
+            Some(dir) => PathBuf::from(dir).join("aperture/projects"),
+            None => home.join(".local/state/aperture/projects"),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Project {
@@ -34,22 +52,29 @@ impl Project {
         self.root.join(DIR)
     }
 
+    /// This project's state directory: `<state base>/<name>-<hash of path>`.
     pub fn local_dir(&self) -> PathBuf {
-        self.root.join(LOCAL_DIR)
+        let root = self.root.canonicalize().unwrap_or_else(|_| self.root.clone());
+        let digest = Sha256::digest(root.to_string_lossy().as_bytes());
+        let name: String = root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .take(40)
+            .collect();
+        state_base().join(format!("{name}-{}", &hex(&digest)[..16]))
     }
 
     fn file(&self, name: &str) -> PathBuf {
         self.manifest_dir().join(name)
     }
 
-    /// Creates `.aperture/` and its `local/` state directory, and makes sure
-    /// local state is ignored by git.
+    /// Creates the manifest directory and this project's state directory.
     pub fn init(&self) -> Result<()> {
+        fs::create_dir_all(self.manifest_dir())?;
         fs::create_dir_all(self.local_dir())?;
-        let ignore = self.manifest_dir().join(".gitignore");
-        if !ignore.exists() {
-            fs::write(&ignore, "local/\n")?;
-        }
         Ok(())
     }
 

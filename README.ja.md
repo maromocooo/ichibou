@@ -47,7 +47,7 @@ aperture               # デーモンを起動して UI を開く
 4. **すべて作る** を押します。チェックリスト・プレビュー・構成図が埋まっていく様子を見ながら、気になる所に注釈を付けます。
 5. すべての要件が現在の版で検証済みになり、手動確認にチェックが付き、フィードバックが解決されたら、そのリクエストは完了です。
 
-Aperture がプロジェクトについて持つ情報は、すべてプロジェクト内の `.aperture/` にあります。`requirements.yaml`、`architecture.yaml`、`targets.yaml`、`scenarios/` はコミットする想定で、`.aperture/local/` はそのマシンだけの状態です。
+Aperture がプロジェクトについて持つ情報は、すべてプロジェクト内の `.aperture/` にあります。`requirements.yaml`、`architecture.yaml`、`targets.yaml`、`scenarios/` はコミットする想定です。Aperture 自身の状態（承認、検証結果、注釈、ログ）はプロジェクトの外の `~/Library/Application Support/Aperture/` に置かれるので、プロジェクト内で作業するエージェントからは書き換えられません。
 
 ### エージェントの利用枠を使わずに試す
 

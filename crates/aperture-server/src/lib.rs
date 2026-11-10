@@ -90,7 +90,7 @@ pub async fn serve(root: impl Into<PathBuf>, port: u16) -> Result<Server> {
     let root = root
         .canonicalize()
         .with_context(|| format!("{} does not exist", root.display()))?;
-    let lock = InstanceLock::acquire(&root.join(aperture_core::manifest::LOCAL_DIR))?;
+    let lock = InstanceLock::acquire(&aperture_core::manifest::Project::new(&root).local_dir())?;
     let engine = Engine::open(&root)?;
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;

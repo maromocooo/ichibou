@@ -115,6 +115,32 @@ export function NextStep() {
         </div>
       </div>
     );
+  } else if (!overview.requirements_approved) {
+    // The file changed outside Aperture (or was never reviewed here).
+    body = (
+      <div className="stack">
+        <strong>{t("next.approveRequirements")}</strong>
+        <ol>
+          {manifest.requirements.requirements.map((req) => (
+            <li key={req.id}>
+              <code>{req.id}</code> {req.title}
+              <ul>
+                {req.criteria.map((c) => (
+                  <li key={c.id} className="muted">
+                    {c.text}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ol>
+        <div>
+          <button className="primary" onClick={() => act(() => api.approveRequirements())}>
+            {t("proposal.accept")}
+          </button>
+        </div>
+      </div>
+    );
   } else if (interrupted) {
     body = (
       <button className="primary" onClick={() => act(() => api.resumeRun())}>

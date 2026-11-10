@@ -47,7 +47,7 @@ aperture               # 启动守护进程并打开界面
 4. 点击 **全部构建**。观察清单、预览和架构图逐步填满，并随时添加标注。
 5. 当所有需求都在当前版本上通过验证、人工确认项已勾选、反馈已处理时，这次请求就完成了。
 
-Aperture 对项目的全部了解都保存在项目内的 `.aperture/` 中：`requirements.yaml`、`architecture.yaml`、`targets.yaml` 和 `scenarios/` 应当提交到版本库；`.aperture/local/` 是仅限本机的状态。
+Aperture 对项目的全部了解都保存在项目内的 `.aperture/` 中：`requirements.yaml`、`architecture.yaml`、`targets.yaml` 和 `scenarios/` 应当提交到版本库。Aperture 自身的状态（批准记录、验证结果、标注、日志）保存在项目之外的 `~/Library/Application Support/Aperture/` 中，因此在项目内工作的智能体无法改写它。
 
 ### 不消耗智能体用量进行体验
 

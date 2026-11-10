@@ -101,6 +101,7 @@ pub fn router(engine: Arc<Engine>) -> Router<Arc<Engine>> {
         .route("/manual", post(manual))
         .route("/proposals/{kind}", post(decide_proposal))
         .route("/targets/approve", post(approve_targets))
+        .route("/requirements/approve", post(approve_requirements))
         .route("/manifest/{kind}", post(save_manifest))
         .route("/previews", get(previews))
         .route("/previews/{target}/start", post(preview_start))
@@ -327,7 +328,10 @@ async fn save_manifest(
     Json(doc): Json<Value>,
 ) -> ApiResult {
     match kind.as_str() {
-        "requirements" => engine.project.save_requirements(&serde_json::from_value(doc)?)?,
+        "requirements" => {
+            engine.project.save_requirements(&serde_json::from_value(doc)?)?;
+            engine.approve_requirements()?;
+        }
         "architecture" => engine.project.save_architecture(&serde_json::from_value(doc)?)?,
         "targets" => {
             engine.project.save_targets(&serde_json::from_value(doc)?)?;
@@ -355,9 +359,21 @@ async fn file(State(engine): State<Arc<Engine>>, Path(path): Path<String>) -> Re
     }
     match tokio::fs::read(&full).await {
         Ok(bytes) => {
-            let mime = mime_guess::from_path(&full).first_or_text_plain();
+            // Logs and reports contain whatever the app under test printed.
+            // Only images keep their type; everything else is plain text, and
+            // nothing may run script in the UI's origin.
+            let guessed = mime_guess::from_path(&full).first_or_text_plain();
+            let mime = if guessed.type_() == "image" && guessed.subtype() != "svg" {
+                guessed.to_string()
+            } else {
+                "text/plain; charset=utf-8".to_string()
+            };
             (
-                [(header::CONTENT_TYPE, mime.to_string())],
+                [
+                    (header::CONTENT_TYPE, mime),
+                    (header::CONTENT_SECURITY_POLICY, "sandbox".to_string()),
+                    (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
+                ],
                 Body::from(bytes),
             )
                 .into_response()
@@ -504,6 +520,7 @@ async fn asset(State(engine): State<Arc<Engine>>, Query(query): Query<AssetQuery
                     (header::CONTENT_TYPE, mime.to_string()),
                     // An SVG is a document; never let one run script in the UI's origin.
                     (header::CONTENT_SECURITY_POLICY, "sandbox".to_string()),
+                    (header::X_CONTENT_TYPE_OPTIONS, "nosniff".to_string()),
                 ],
                 Body::from(bytes),
             )
@@ -537,4 +554,9 @@ async fn preview_stream(State(engine): State<Arc<Engine>>, Path(target): Path<St
         }
         Err(_) => StatusCode::BAD_GATEWAY.into_response(),
     }
+}
+
+async fn approve_requirements(State(engine): State<Arc<Engine>>) -> ApiResult {
+    engine.approve_requirements()?;
+    ok()
 }

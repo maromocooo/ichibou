@@ -10,6 +10,13 @@ use aperture_core::manifest::Project;
 use aperture_core::*;
 use serde_json::{json, Value};
 
+/// Keeps test state out of the real per-user data directory.
+fn isolate_state() {
+    static DIR: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    let dir = DIR.get_or_init(|| tempfile::tempdir().unwrap());
+    std::env::set_var("APERTURE_STATE_DIR", dir.path());
+}
+
 struct Client {
     http: reqwest::Client,
     base: String,
@@ -133,6 +140,7 @@ fi
 
 #[tokio::test(flavor = "multi_thread")]
 async fn build_verify_annotate_demote_restart() {
+    isolate_state();
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("project");
     fs::create_dir_all(&root).unwrap();
@@ -184,8 +192,12 @@ async fn build_verify_annotate_demote_restart() {
     let overview = api.get("/api/overview").await;
     assert_eq!(overview["targets_approved"], false);
     assert_eq!(overview["status"]["architecture"]["nodes"]["core"], "present");
+    assert_eq!(overview["requirements_approved"], false);
     api.post("/api/targets/approve", json!({})).await;
+    api.post("/api/requirements/approve", json!({})).await;
     api.post("/api/scenarios/approve-all", json!({})).await;
+    // The daemon keeps nothing of its own inside the workspace.
+    assert!(!root.join(".aperture/local").exists());
 
     // The starting point does not satisfy the requirement.
     api.post("/api/verify", json!({})).await;
@@ -240,6 +252,22 @@ async fn build_verify_annotate_demote_restart() {
     assert_eq!(overview["status"]["complete"], false);
     assert!(overview["results"][0]["detail"].as_str().unwrap().contains("1 failed"));
 
+    // An agent that rewrites requirements.yaml to drop work does not get a
+    // "complete" out of it: the user's approved version is what counts.
+    fs::write(root.join("answer.txt"), "42\n").unwrap();
+    api.until("done again", |o| requirement_state(o) == "done" && o["status"]["complete"] == true).await;
+    let requirements = root.join(".aperture/requirements.yaml");
+    let original = fs::read_to_string(&requirements).unwrap();
+    fs::write(&requirements, original.replace("answer is 42", "anything goes")).unwrap();
+    let overview = api
+        .until("requirements flagged", |o| o["requirements_approved"] == false && o["verifying"] == false)
+        .await;
+    assert_eq!(overview["status"]["complete"], false);
+    fs::write(&requirements, original).unwrap();
+    api.until("complete once restored", |o| o["status"]["complete"] == true).await;
+    fs::write(root.join("answer.txt"), "41\n").unwrap();
+    api.until("failing again", |o| requirement_state(o) == "failing").await;
+
     // A second daemon for the same project is refused.
     assert!(aperture_server::serve(&root, 0).await.is_err());
 
@@ -265,6 +293,7 @@ async fn build_verify_annotate_demote_restart() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn proposals_are_not_applied_until_the_user_accepts() {
+    isolate_state();
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().join("project");
     fs::create_dir_all(&root).unwrap();
@@ -307,5 +336,73 @@ async fn proposals_are_not_applied_until_the_user_accepts() {
     assert!(overview["proposals"]["requirements"].is_null());
     assert_eq!(overview["status"]["requirements"][0]["criteria"][0]["state"], "no_scenario");
     assert_eq!(overview["status"]["requirements"][0]["schedule"]["kind"], "next");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn inspectors_wait_for_approval_and_stay_inside_the_project() {
+    isolate_state();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    // A database outside the project that targets.yaml tries to point at.
+    let outside = dir.path().join("secret.db");
+    fs::write(&outside, "").unwrap();
+    fs::write(root.join("openapi.json"), r#"{"openapi":"3.1.0","paths":{}}"#).unwrap();
+    let project = Project::new(&root);
+    project.init().unwrap();
+    project
+        .save_targets(&TargetsDoc {
+            targets: vec![],
+            apis: vec![ApiSource {
+                node: "api".into(),
+                openapi_file: Some("openapi.json".into()),
+                openapi_url: None,
+                openapi_command: None,
+                base_url: Some("http://127.0.0.1:9".into()),
+            }],
+            databases: vec![DatabaseSource {
+                node: "db".into(),
+                kind: DatabaseKind::Sqlite,
+                url: "../secret.db".into(),
+            }],
+        })
+        .unwrap();
+    let server = aperture_server::serve(&root, 0).await.unwrap();
+    let api = Client::new(&server);
+    let get = |path: &'static str| {
+        let request = api
+            .http
+            .get(format!("{}{path}", api.base))
+            .header("x-aperture-token", &api.token);
+        async move {
+            let response = request.send().await.unwrap();
+            (response.status().as_u16(), response.text().await.unwrap())
+        }
+    };
+
+    // Before the user approved targets.yaml nothing in it is used.
+    for path in ["/api/inspect/openapi/api", "/api/inspect/db/db"] {
+        let (status, body) = get(path).await;
+        assert_eq!(status, 400, "{path}");
+        assert!(body.contains("approve targets.yaml"), "{body}");
+    }
+    let refused = api
+        .http
+        .post(format!("{}/api/inspect/request/api", api.base))
+        .header("x-aperture-token", &api.token)
+        .json(&json!({ "method": "GET", "path": "/" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(refused.status(), 400);
+
+    api.post("/api/targets/approve", json!({})).await;
+    let (status, body) = get("/api/inspect/openapi/api").await;
+    assert_eq!(status, 200, "{body}");
+    // Approved or not, a path that leaves the project is refused.
+    let (status, body) = get("/api/inspect/db/db").await;
+    assert_eq!(status, 400);
+    assert!(body.contains("outside the project"), "{body}");
     server.shutdown().await;
 }

@@ -227,6 +227,7 @@ export interface Overview {
   verifying: boolean;
   config: Config;
   targets_approved: boolean;
+  requirements_approved: boolean;
 }
 
 export interface StoredEvent {
@@ -322,6 +323,7 @@ export const api = {
   decideProposal: (kind: "requirements" | "architecture" | "targets", accept: boolean) =>
     call("POST", `/proposals/${kind}`, { accept }),
   approveTargets: () => call("POST", "/targets/approve", {}),
+  approveRequirements: () => call("POST", "/requirements/approve", {}),
   previewStart: (target: string) => call("POST", `/previews/${encodeURIComponent(target)}/start`, {}),
   previewStop: (target: string) => call("POST", `/previews/${encodeURIComponent(target)}/stop`, {}),
   previewTap: (target: string, x: number, y: number) =>

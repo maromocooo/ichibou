@@ -7,6 +7,13 @@ use aperture_core::store::Store;
 use aperture_core::*;
 use aperture_verify::{freeze, Verifier};
 
+/// Keeps test state out of the real per-user data directory.
+fn isolate_state() {
+    static DIR: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    let dir = DIR.get_or_init(|| tempfile::tempdir().unwrap());
+    std::env::set_var("APERTURE_STATE_DIR", dir.path());
+}
+
 struct Fixture {
     _dir: tempfile::TempDir,
     project: Project,
@@ -17,6 +24,7 @@ struct Fixture {
 /// A project whose single requirement is checked by a shell command that
 /// writes a JUnit report: it passes when `answer.txt` contains 42.
 fn fixture() -> Fixture {
+    isolate_state();
     let dir = tempfile::tempdir().unwrap();
     let project = Project::new(dir.path());
     project.init().unwrap();

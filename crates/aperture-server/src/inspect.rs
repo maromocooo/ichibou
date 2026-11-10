@@ -22,16 +22,39 @@ fn api_source(engine: &Engine, node: &str) -> Result<ApiSource> {
         .ok_or_else(|| anyhow!("no OpenAPI source is registered for `{node}` in targets.yaml"))
 }
 
+/// Resolves a path from targets.yaml and refuses anything that ends up
+/// outside the project (absolute paths, `..`, symlinks pointing away).
+fn inside_project(engine: &Engine, relative: &str) -> Result<std::path::PathBuf> {
+    let root = engine.project.root.canonicalize()?;
+    let full = root.join(relative).canonicalize()?;
+    if !full.starts_with(&root) {
+        bail!("`{relative}` is outside the project");
+    }
+    Ok(full)
+}
+
 fn parse_spec(text: &str) -> Result<Value> {
     // JSON is valid YAML, so one parser covers both.
     serde_yaml::from_str(text).context("the OpenAPI document is not valid JSON or YAML")
 }
 
 /// Loads the OpenAPI document for an API node.
+/// targets.yaml sits in the workspace, so an agent can write URLs into it.
+/// Nothing in it is fetched, connected to or run until the user has approved
+/// that exact version of the file.
+fn require_approval(engine: &Engine) -> Result<()> {
+    if !engine.targets_approved() {
+        bail!("approve targets.yaml first: its URLs and commands have changed since you last reviewed them");
+    }
+    Ok(())
+}
+
 pub async fn openapi(engine: &Engine, node: &str) -> Result<Value> {
     let source = api_source(engine, node)?;
+    require_approval(engine)?;
     let spec = if let Some(file) = &source.openapi_file {
-        let path = engine.project.root.join(file);
+        let path = inside_project(engine, file)
+            .with_context(|| format!("{file} does not exist yet"))?;
         let text = tokio::fs::read_to_string(&path)
             .await
             .with_context(|| format!("{file} does not exist yet"))?;
@@ -48,9 +71,6 @@ pub async fn openapi(engine: &Engine, node: &str) -> Result<Value> {
             .await?;
         parse_spec(&text)?
     } else if let Some(command) = &source.openapi_command {
-        if !engine.targets_approved() {
-            bail!("approve the commands in targets.yaml before Aperture runs `{command}`");
-        }
         let out = tokio::time::timeout(
             Duration::from_secs(60),
             tokio::process::Command::new("sh")
@@ -89,6 +109,7 @@ pub struct TryRequest {
 /// response. Only that URL can be reached, so this is not an open proxy.
 pub async fn try_request(engine: &Engine, node: &str, request: TryRequest) -> Result<Value> {
     let source = api_source(engine, node)?;
+    require_approval(engine)?;
     let base = source
         .base_url
         .context("set `base_url` for this API in targets.yaml to send requests")?;
@@ -165,12 +186,15 @@ pub async fn database(engine: &Engine, node: &str) -> Result<Value> {
         .into_iter()
         .find(|d| d.node == node)
         .ok_or_else(|| anyhow!("no database is registered for `{node}` in targets.yaml"))?;
+    require_approval(engine)?;
     let tables = match source.kind {
         DatabaseKind::Sqlite => {
-            let path = engine
-                .project
-                .root
-                .join(source.url.trim_start_matches("sqlite://").trim_start_matches("sqlite:"));
+            let relative = source
+                .url
+                .trim_start_matches("sqlite://")
+                .trim_start_matches("sqlite:");
+            let path = inside_project(engine, relative)
+                .with_context(|| format!("{relative} does not exist yet"))?;
             tokio::task::spawn_blocking(move || sqlite_tables(&path)).await??
         }
         DatabaseKind::Postgres => postgres_tables(&source.url).await?,

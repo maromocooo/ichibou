@@ -372,6 +372,7 @@ async fn call(engine: &Arc<Engine>, run: &str, name: &str, arguments: Value) -> 
             Ok(json!({
                 "verifying": overview.verifying,
                 "targets_approved": overview.targets_approved,
+                "requirements_approved": overview.requirements_approved,
                 "requirements": states,
                 "failing": engine.failure_report(None)?,
             }))

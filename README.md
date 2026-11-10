@@ -47,7 +47,7 @@ aperture               # starts the daemon and opens the UI
 4. Press **Build everything**. Watch the checklist, the preview and the diagram fill in; annotate anything.
 5. The request is complete when every requirement is verified on the current version, your manual checks are ticked and your feedback is resolved.
 
-Everything Aperture knows about a project lives in `.aperture/` inside it: `requirements.yaml`, `architecture.yaml`, `targets.yaml` and `scenarios/` are meant to be committed; `.aperture/local/` is machine-local state.
+Everything Aperture knows about a project lives in `.aperture/` inside it: `requirements.yaml`, `architecture.yaml`, `targets.yaml` and `scenarios/` are meant to be committed. Aperture's own state (approvals, verdicts, annotations, logs) is kept outside the project, in `~/Library/Application Support/Aperture/`, so an agent working in the project cannot rewrite it.
 
 ### Try it without spending agent usage
 

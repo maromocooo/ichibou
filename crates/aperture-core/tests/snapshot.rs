@@ -4,6 +4,13 @@ use aperture_core::manifest::Project;
 use aperture_core::snapshot;
 use aperture_core::*;
 
+/// Keeps test state out of the real per-user data directory.
+fn isolate_state() {
+    static DIR: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    let dir = DIR.get_or_init(|| tempfile::tempdir().unwrap());
+    std::env::set_var("APERTURE_STATE_DIR", dir.path());
+}
+
 #[test]
 fn snapshot_tracks_content_and_skips_ignored_and_local_state() {
     let dir = tempfile::tempdir().unwrap();
@@ -56,9 +63,14 @@ fn materialized_copy_has_the_same_id_and_only_requested_extras() {
 #[test]
 fn manifest_round_trips_and_scenario_definition_follows_test_files() {
     let dir = tempfile::tempdir().unwrap();
+    isolate_state();
     let project = Project::new(dir.path());
     project.init().unwrap();
     assert_eq!(project.load().unwrap(), Default::default());
+    // Aperture's own state is not inside the workspace an agent can write to.
+    assert!(!project.local_dir().starts_with(dir.path().canonicalize().unwrap()));
+    assert!(project.local_dir().is_dir());
+    assert!(!dir.path().join(".aperture/local").exists());
 
     let requirements = RequirementsDoc {
         requirements: vec![Requirement {

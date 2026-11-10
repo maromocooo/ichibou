@@ -87,6 +87,8 @@ pub struct Overview {
     pub config: Config,
     /// Whether the commands in targets.yaml were approved by the user.
     pub targets_approved: bool,
+    /// Whether requirements.yaml is the version the user approved.
+    pub requirements_approved: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -293,7 +295,7 @@ impl Engine {
                 && a.state != AnnotationState::Resolved
                 && a.requirements.is_empty()
         });
-        status.complete = status.complete && !unlinked_fix;
+        status.complete = status.complete && !unlinked_fix && self.requirements_approved();
         Ok((manifest, status))
     }
 
@@ -306,12 +308,31 @@ impl Engine {
         }
     }
 
-    fn targets_hash(&self) -> String {
-        let bytes = std::fs::read(self.project.manifest_dir().join("targets.yaml")).unwrap_or_default();
+    fn manifest_hash(&self, file: &str) -> String {
+        let bytes = std::fs::read(self.project.manifest_dir().join(file)).unwrap_or_default();
         Sha256::digest(&bytes)
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect()
+    }
+
+    fn targets_hash(&self) -> String {
+        self.manifest_hash("targets.yaml")
+    }
+
+    /// The requirements file is in the workspace, where an agent could edit
+    /// it (dropping a requirement would make the rest look complete). The
+    /// request only counts as complete for the version the user approved.
+    pub fn requirements_approved(&self) -> bool {
+        self.store.kv_get("requirements_approved").ok().flatten()
+            == Some(self.manifest_hash("requirements.yaml"))
+    }
+
+    pub fn approve_requirements(&self) -> Result<()> {
+        self.store
+            .kv_set("requirements_approved", &self.manifest_hash("requirements.yaml"))?;
+        self.notify(UiEvent::Status);
+        Ok(())
     }
 
     /// Commands in targets.yaml only run after the user approved exactly this
@@ -347,6 +368,7 @@ impl Engine {
             verifying: self.verifying.load(Ordering::SeqCst),
             config: self.config(),
             targets_approved: self.targets_approved(),
+            requirements_approved: self.requirements_approved(),
         })
     }
 
@@ -386,7 +408,10 @@ impl Engine {
         };
         if accept {
             match kind {
-                "requirements" => self.project.save_requirements(&serde_json::from_str(&text)?)?,
+                "requirements" => {
+                    self.project.save_requirements(&serde_json::from_str(&text)?)?;
+                    self.approve_requirements()?;
+                }
                 "architecture" => self.project.save_architecture(&serde_json::from_str(&text)?)?,
                 "targets" => {
                     self.project.save_targets(&serde_json::from_str(&text)?)?;
