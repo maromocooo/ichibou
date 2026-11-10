@@ -155,7 +155,8 @@ impl Previews {
             };
             let fill = |text: &str| text.replace("{port}", &port.to_string());
             let cwd = match &launch.cwd {
-                Some(cwd) => engine.project.root.join(cwd),
+                Some(cwd) => aperture_core::manifest::resolve_inside(&engine.project.root, cwd)
+                    .with_context(|| format!("`cwd: {cwd}` is not a directory inside the project"))?,
                 None => engine.project.root.clone(),
             };
             let env = vec![("PORT".to_string(), port.to_string())];

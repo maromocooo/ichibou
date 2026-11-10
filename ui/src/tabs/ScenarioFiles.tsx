@@ -6,9 +6,18 @@ import { useT } from "../i18n";
 type Line = { kind: "same" | "add" | "del"; text: string };
 
 /** Line diff by longest common subsequence. Fine for test-file sizes. */
-export function diffLines(before: string, after: string): Line[] {
+/** Largest line-count product the diff table is built for (about 32 MB). */
+const MAX_DIFF_CELLS = 4_000_000;
+
+/**
+ * Line diff by longest common subsequence. Returns null when the inputs are
+ * too large to diff this way; the size is checked before anything is
+ * allocated.
+ */
+export function diffLines(before: string, after: string): Line[] | null {
   const a = before.split("\n");
   const b = after.split("\n");
+  if ((a.length + 1) * (b.length + 1) > MAX_DIFF_CELLS) return null;
   // lcs[i][j] = length of the LCS of a[i..] and b[j..]
   const lcs: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
   for (let i = a.length - 1; i >= 0; i--) {
@@ -35,7 +44,6 @@ export function diffLines(before: string, after: string): Line[] {
   return out;
 }
 
-const MAX_DIFF_LINES = 3000;
 
 function Content({ file }: { file: ShownFile }) {
   const t = useT();
@@ -51,7 +59,7 @@ function Content({ file }: { file: ShownFile }) {
   const bothText = current !== null && approved !== null && "text" in current && "text" in approved;
   if (file.changed && bothText) {
     const lines = diffLines(approved.text, current.text);
-    if (lines.length <= MAX_DIFF_LINES) {
+    if (lines) {
       return (
         <pre className="log code diff">
           {lines.map((line, index) => (

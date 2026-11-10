@@ -82,6 +82,7 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 ```sh
 cargo test --workspace
 npm --prefix ui run typecheck
+npm --prefix ui run e2e      # 実際のデーモンとスクリプトの代役エージェントで UI を通す
 ```
 
 構成：`crates/aperture-core`（モデル、状態判定、スナップショット、ストア）、`aperture-agents`（Claude・Codex・スクリプトの各ドライバー）、`aperture-verify`（検証ランナー）、`aperture-server`（デーモン：API、MCP ツール、プレビュー、インスペクタ）、`aperture-cli`、`ui/`（React）、`overlay/`（Web プレビューに注入するスクリプト）。

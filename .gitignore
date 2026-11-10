@@ -3,3 +3,5 @@ node_modules
 dist
 .DS_Store
 .aperture/local
+test-results
+playwright-report

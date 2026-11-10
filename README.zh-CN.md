@@ -82,6 +82,7 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 ```sh
 cargo test --workspace
 npm --prefix ui run typecheck
+npm --prefix ui run e2e      # 用真实的守护进程和脚本替身智能体跑通界面
 ```
 
 目录结构：`crates/aperture-core`（模型、状态判定、快照、存储）、`aperture-agents`（Claude、Codex 与脚本驱动）、`aperture-verify`（验证运行器）、`aperture-server`（守护进程：API、MCP 工具、预览、检查器）、`aperture-cli`、`ui/`（React）、`overlay/`（注入到 Web 预览中的脚本）。

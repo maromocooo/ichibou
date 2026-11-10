@@ -174,7 +174,11 @@ impl Verifier {
         let setup_log = work.join(".aperture-verify.log");
 
         for dir in &env_spec.link {
-            let from = self.project.root.join(dir);
+            // Only directories inside the project are linked, and only to
+            // the same relative place inside the copy.
+            let Some(from) = aperture_core::manifest::resolve_inside(&self.project.root, dir) else {
+                continue;
+            };
             let to = work.join(dir);
             if from.is_dir() && !to.exists() {
                 if let Some(parent) = to.parent() {
@@ -209,7 +213,10 @@ impl Verifier {
             let fill = |text: &str| text.replace("{port}", &port.to_string());
             env.push(("PORT".into(), port.to_string()));
             let cwd = match &launch.cwd {
-                Some(cwd) => work.join(cwd),
+                Some(cwd) if aperture_core::manifest::is_safe_relative(cwd) => work.join(cwd),
+                Some(cwd) => {
+                    return fail_all(format!("`cwd: {cwd}` must be a relative path inside the project"))
+                }
                 None => work.to_path_buf(),
             };
             let mut process = match Background::spawn(&fill(&launch.command), &cwd, &env, &setup_log)
@@ -401,6 +408,10 @@ fn copy_stable(root: &Path, work: &Path, extras: &[String]) -> Result<SnapshotId
 /// agent's edit to a test cannot change what is being judged.
 fn restore_approved_files(work: &Path, frozen: &FrozenScenario) -> Result<()> {
     for (path, content) in &frozen.files {
+        // Never write outside the copy, whatever a stored path says.
+        if !aperture_core::manifest::is_safe_relative(path) {
+            bail!("approved scenario file `{path}` is not a path inside the project");
+        }
         let full = work.join(path);
         match content {
             Some(bytes) => {

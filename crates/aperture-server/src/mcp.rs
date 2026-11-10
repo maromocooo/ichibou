@@ -241,8 +241,12 @@ async fn call(engine: &Arc<Engine>, run: &str, name: &str, arguments: Value) -> 
                     }
                 }
                 for file in &scenario.files {
-                    if !engine.project.root.join(file).is_file() {
-                        bail!("scenario {} lists a file that does not exist: {file}", scenario.id);
+                    let inside = manifest::resolve_inside(&engine.project.root, file);
+                    if !inside.is_some_and(|path| path.is_file()) {
+                        bail!(
+                            "scenario {} lists `{file}`, which is not a file inside the project",
+                            scenario.id
+                        );
                     }
                 }
             }

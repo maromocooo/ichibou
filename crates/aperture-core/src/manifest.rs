@@ -102,10 +102,34 @@ impl Project {
     /// Returns the text that was written, so callers can bind an approval
     /// to exactly these bytes.
     pub fn save_targets(&self, doc: &TargetsDoc) -> Result<String> {
+        for target in &doc.targets {
+            let launches = [
+                target.dev.as_ref(),
+                target.verify.as_ref().and_then(|v| v.start.as_ref()),
+            ];
+            let cwds = launches.into_iter().flatten().filter_map(|l| l.cwd.as_deref());
+            let lists = target
+                .verify
+                .iter()
+                .flat_map(|v| v.copy.iter().chain(v.link.iter()))
+                .map(String::as_str);
+            for path in cwds.chain(lists) {
+                if !is_safe_relative(path) {
+                    bail!("target {}: `{path}` must be a relative path inside the project", target.name);
+                }
+            }
+        }
         write_yaml(&self.file("targets.yaml"), doc)
     }
 
     pub fn save_scenarios(&self, doc: &ScenariosDoc) -> Result<()> {
+        for scenario in &doc.scenarios {
+            for file in &scenario.files {
+                if !is_safe_relative(file) {
+                    bail!("scenario {}: `{file}` must be a relative path inside the project", scenario.id);
+                }
+            }
+        }
         write_yaml(&self.file("scenarios/index.yaml"), doc).map(|_| ())
     }
 
@@ -124,15 +148,59 @@ impl Project {
     }
 }
 
-/// Reads a scenario's test files once. `None` marks a file that is missing.
+/// Largest scenario test file Aperture will read, freeze and show.
+pub const MAX_SCENARIO_FILE: u64 = 4 * 1024 * 1024;
+
+/// Whether a path taken from a manifest file is a plain relative path: not
+/// absolute and with no `..`. Manifest files live in the workspace, where an
+/// agent can write them, so their paths are never trusted to stay inside it.
+pub fn is_safe_relative(path: &str) -> bool {
+    use std::path::Component;
+    !path.is_empty()
+        && Path::new(path)
+            .components()
+            .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+}
+
+/// Resolves a manifest path to an existing location inside `root`. Returns
+/// `None` when the path is not a plain relative one, does not exist, or
+/// (through a symlink) ends up outside `root`.
+pub fn resolve_inside(root: &Path, relative: &str) -> Option<PathBuf> {
+    if !is_safe_relative(relative) {
+        return None;
+    }
+    let root = root.canonicalize().ok()?;
+    let full = root.join(relative).canonicalize().ok()?;
+    full.starts_with(&root).then_some(full)
+}
+
+/// Reads a scenario's test files once. `None` marks a file that is missing,
+/// is not a regular file inside the project, or is larger than
+/// [`MAX_SCENARIO_FILE`]; such a file can never be part of a passing run.
 pub fn read_scenario_files(
     root: &Path,
     scenario: &Scenario,
 ) -> std::collections::HashMap<String, Option<Vec<u8>>> {
+    use std::io::Read;
+    let read = |file: &str| -> Option<Vec<u8>> {
+        let path = resolve_inside(root, file)?;
+        let meta = fs::metadata(&path).ok()?;
+        if !meta.is_file() || meta.len() > MAX_SCENARIO_FILE {
+            return None;
+        }
+        // The size is checked again while reading: the file may grow.
+        let mut bytes = Vec::new();
+        fs::File::open(&path)
+            .ok()?
+            .take(MAX_SCENARIO_FILE + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        (bytes.len() as u64 <= MAX_SCENARIO_FILE).then_some(bytes)
+    };
     scenario
         .files
         .iter()
-        .map(|file| (file.clone(), fs::read(root.join(file)).ok()))
+        .map(|file| (file.clone(), read(file)))
         .collect()
 }
 

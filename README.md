@@ -82,6 +82,7 @@ A scripted stand-in agent builds a small notes app step by step.
 ```sh
 cargo test --workspace
 npm --prefix ui run typecheck
+npm --prefix ui run e2e      # the UI against the real daemon, with the scripted agent
 ```
 
 Layout: `crates/aperture-core` (model, status rules, snapshots, store), `aperture-agents` (Claude, Codex and scripted drivers), `aperture-verify` (verification runner), `aperture-server` (daemon: API, MCP tools, previews, inspectors), `aperture-cli`, `ui/` (React), `overlay/` (script injected into web previews).

@@ -119,7 +119,11 @@ pub fn materialize(root: &Path, dest: &Path, extra: &[String]) -> Result<Snapsho
     }
     let id = take(dest)?;
     for rel in extra {
-        let from = root.join(rel);
+        // The list comes from targets.yaml. A path that leaves the project
+        // is neither read nor written.
+        let Some(from) = crate::manifest::resolve_inside(root, rel) else {
+            continue;
+        };
         if from.is_file() {
             let to = dest.join(rel);
             if let Some(parent) = to.parent() {

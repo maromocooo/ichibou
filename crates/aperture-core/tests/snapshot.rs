@@ -126,3 +126,54 @@ fn manifest_round_trips_and_scenario_definition_follows_test_files() {
     bad.requirements[0].depends_on = vec!["NOPE".into()];
     assert!(project.save_requirements(&bad).is_err());
 }
+
+#[test]
+fn manifest_paths_cannot_leave_the_project() {
+    use aperture_core::manifest::{is_safe_relative, read_scenario_files, resolve_inside};
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    fs::create_dir_all(root.join("e2e")).unwrap();
+    fs::write(root.join("e2e/ok.spec.ts"), "ok").unwrap();
+    fs::write(dir.path().join("secret.txt"), "secret").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(dir.path().join("secret.txt"), root.join("e2e/link.spec.ts")).unwrap();
+
+    assert!(is_safe_relative("e2e/ok.spec.ts"));
+    for bad in ["", "../secret.txt", "e2e/../../secret.txt", "/etc/passwd"] {
+        assert!(!is_safe_relative(bad), "{bad}");
+        assert!(resolve_inside(&root, bad).is_none(), "{bad}");
+    }
+    // A symlink inside the project that points outside is refused too.
+    assert!(resolve_inside(&root, "e2e/link.spec.ts").is_none());
+
+    let scenario = Scenario {
+        id: "s".into(),
+        title: "s".into(),
+        target: "web".into(),
+        runner: RunnerKind::Command,
+        covers: vec![],
+        files: vec![
+            "e2e/ok.spec.ts".into(),
+            "../secret.txt".into(),
+            "e2e/link.spec.ts".into(),
+        ],
+        command: None,
+    };
+    let files = read_scenario_files(&root, &scenario);
+    assert_eq!(files["e2e/ok.spec.ts"].as_deref(), Some(&b"ok"[..]));
+    assert!(files["../secret.txt"].is_none());
+    assert!(files["e2e/link.spec.ts"].is_none());
+
+    // The manifest refuses such paths when written through Aperture, and
+    // ignored-file copies from targets.yaml never reach outside.
+    isolate_state();
+    let project = Project::new(&root);
+    project.init().unwrap();
+    assert!(project
+        .save_scenarios(&ScenariosDoc { scenarios: vec![scenario] })
+        .is_err());
+    let dest = dir.path().join("copy");
+    snapshot::materialize(&root, &dest, &["../secret.txt".into()]).unwrap();
+    assert!(fs::read_dir(&dest).unwrap().all(|e| e.unwrap().file_name() != "secret.txt"));
+    assert_eq!(fs::read_to_string(dir.path().join("secret.txt")).unwrap(), "secret");
+}
