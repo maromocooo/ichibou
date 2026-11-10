@@ -85,6 +85,7 @@ pub fn router(engine: Arc<Engine>) -> Router<Arc<Engine>> {
         .route("/events", get(events))
         .route("/ws", get(ws))
         .route("/config", post(set_config))
+        .route("/agents", get(agents))
         .route("/runs", post(start_run))
         .route("/runs/resume", post(resume))
         .route("/runs/{id}/message", post(message))
@@ -614,4 +615,8 @@ async fn preview_video(
         return StatusCode::NOT_FOUND.into_response();
     }
     upgrade.on_upgrade(crate::preview::android_video)
+}
+
+async fn agents(State(engine): State<Arc<Engine>>) -> ApiResult {
+    Ok(Json(engine.agent_options().await))
 }

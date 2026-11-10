@@ -32,6 +32,11 @@ pub struct SessionSpec {
     pub instructions: String,
     /// Streamable-HTTP MCP endpoint exposed by the daemon for this run.
     pub mcp_url: Option<String>,
+    /// Model to run, as the agent's CLI names it. `None` uses the CLI's own
+    /// default.
+    pub model: Option<String>,
+    /// Reasoning effort, as the agent's CLI names it. `None` uses its default.
+    pub effort: Option<String>,
     /// Claude permission mode for sessions that may write. Chosen by the user.
     pub claude_permission_mode: String,
     /// Script for the fake driver.
@@ -134,5 +139,64 @@ pub(crate) fn truncate(text: &str, max: usize) -> String {
     } else {
         let cut: String = text.chars().take(max).collect();
         format!("{cut}…")
+    }
+}
+
+/// Whether a model or effort name is safe to pass on a command line and
+/// inside a quoted configuration value: letters, digits and a few
+/// punctuation marks, nothing that could end a string or start an option.
+pub fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 80
+        && !name.starts_with('-')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | ':' | '/' | '[' | ']'))
+}
+
+/// A model an agent offers, with the reasoning efforts it accepts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub efforts: Vec<String>,
+    #[serde(default)]
+    pub default_effort: Option<String>,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+/// What the UI offers for one agent.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentOptions {
+    pub models: Vec<ModelInfo>,
+    /// The CLI accepts model names beyond the listed ones.
+    pub free_text: bool,
+    /// Why the list could not be read, when it could not.
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+/// Claude Code has no command that lists models. It accepts aliases for the
+/// latest model of each family, or a model's full name, and one fixed set of
+/// effort levels (`claude --help`).
+pub fn claude_options() -> AgentOptions {
+    let efforts: Vec<String> = ["low", "medium", "high", "xhigh", "max"]
+        .iter()
+        .map(|e| e.to_string())
+        .collect();
+    AgentOptions {
+        models: ["fable", "opus", "sonnet", "haiku"]
+            .iter()
+            .map(|id| ModelInfo {
+                id: id.to_string(),
+                name: id.to_string(),
+                efforts: efforts.clone(),
+                default_effort: None,
+                is_default: false,
+            })
+            .collect(),
+        free_text: true,
+        error: None,
     }
 }

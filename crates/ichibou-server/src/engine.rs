@@ -31,6 +31,28 @@ pub struct Config {
     #[serde(default)]
     pub fake_script: Option<String>,
     pub auto_verify: bool,
+    /// Model and reasoning effort per agent, in the words of that agent's
+    /// CLI. Empty means the CLI's own default.
+    #[serde(default)]
+    pub claude_model: Option<String>,
+    #[serde(default)]
+    pub claude_effort: Option<String>,
+    #[serde(default)]
+    pub codex_model: Option<String>,
+    #[serde(default)]
+    pub codex_effort: Option<String>,
+}
+
+impl Config {
+    /// The model and effort configured for `agent`.
+    pub fn choice(&self, agent: AgentKind) -> (Option<String>, Option<String>) {
+        let pick = |value: &Option<String>| value.clone().filter(|v| !v.trim().is_empty());
+        match agent {
+            AgentKind::Claude => (pick(&self.claude_model), pick(&self.claude_effort)),
+            AgentKind::Codex => (pick(&self.codex_model), pick(&self.codex_effort)),
+            AgentKind::Fake => (None, None),
+        }
+    }
 }
 
 impl Default for Config {
@@ -40,6 +62,10 @@ impl Default for Config {
             claude_permission_mode: "acceptEdits".into(),
             fake_script: None,
             auto_verify: true,
+            claude_model: None,
+            claude_effort: None,
+            codex_model: None,
+            codex_effort: None,
         }
     }
 }
@@ -151,6 +177,8 @@ pub struct Engine {
     nudges: Mutex<HashMap<String, u32>>,
     /// Snapshot of the last completed verification run.
     last_verified: Mutex<Option<SnapshotId>>,
+    /// Models the installed Codex CLI offers, read once per daemon.
+    codex_models: tokio::sync::Mutex<Option<ichibou_agents::AgentOptions>>,
     pub previews: crate::preview::Previews,
 }
 
@@ -195,6 +223,7 @@ impl Engine {
             approvals: Mutex::new(Vec::new()),
             nudges: Mutex::new(HashMap::new()),
             last_verified: Mutex::new(None),
+            codex_models: tokio::sync::Mutex::new(None),
             previews: Default::default(),
         });
         engine.recover()?;
@@ -232,7 +261,47 @@ impl Engine {
         if config.claude_permission_mode == "bypassPermissions" {
             bail!("Ichibou does not run agents with permission checks bypassed");
         }
+        // These end up on the agent's command line.
+        for value in [
+            &config.claude_model,
+            &config.claude_effort,
+            &config.codex_model,
+            &config.codex_effort,
+        ] {
+            if let Some(name) = value.as_deref().filter(|v| !v.trim().is_empty()) {
+                if !ichibou_agents::valid_name(name) {
+                    bail!("`{name}` is not a valid model or effort name");
+                }
+            }
+        }
         self.store.kv_set("config", &serde_json::to_string(config)?)
+    }
+
+    /// The models and efforts each agent can be run with.
+    pub async fn agent_options(&self) -> serde_json::Value {
+        let mut cached = self.codex_models.lock().await;
+        if cached.is_none() {
+            let options = match ichibou_agents::codex::models(None).await {
+                Ok(models) => ichibou_agents::AgentOptions {
+                    models,
+                    free_text: false,
+                    error: None,
+                },
+                // Not installed, not signed in, or no answer: say why and
+                // let the user type a model name.
+                Err(err) => ichibou_agents::AgentOptions {
+                    models: vec![],
+                    free_text: true,
+                    error: Some(format!("{err:#}")),
+                },
+            };
+            // A failure is not cached: the next request tries again.
+            if options.error.is_some() {
+                return serde_json::json!({ "claude": ichibou_agents::claude_options(), "codex": options });
+            }
+            *cached = Some(options);
+        }
+        serde_json::json!({ "claude": ichibou_agents::claude_options(), "codex": cached.clone() })
     }
 
     // -- status ------------------------------------------------------------
@@ -955,6 +1024,8 @@ impl Engine {
             read_only,
             instructions: prompts::instructions(role),
             mcp_url: Some(format!("http://127.0.0.1:{}/mcp/{mcp_token}", self.port())),
+            model: config.choice(agent).0,
+            effort: config.choice(agent).1,
             claude_permission_mode: config.claude_permission_mode.clone(),
             fake_script: config.fake_script.clone().map(Into::into),
             program: None,
@@ -969,6 +1040,7 @@ impl Engine {
             session: None,
             generation,
             pid: session.pid,
+            model: None,
             auth: None,
             last_message: String::new(),
             started_at: now,
@@ -1037,9 +1109,12 @@ impl Engine {
         }
 
         match event {
-            AgentEvent::Session { id, auth, .. } => self.update_run(run, |r| {
+            AgentEvent::Session { id, auth, model } => self.update_run(run, |r| {
                 r.session = Some(id);
                 r.auth = auth;
+                if model.is_some() {
+                    r.model = model;
+                }
             }),
             AgentEvent::Activity { activity } => self.update_run(run, |r| {
                 // Keep showing a rate limit until the agent works again.

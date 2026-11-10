@@ -26,7 +26,10 @@ export function AgentPanel() {
             <div className="row">
               <span className={`dot ${run.activity}`} aria-hidden />
               <strong>{t(`role.${run.role}`)}</strong>
-              <span className="muted">{run.agent}</span>
+              <span className="muted clip">
+                {run.agent}
+                {run.model ? ` · ${run.model}` : ""}
+              </span>
             </div>
             <div className={run.activity === "rate_limited" ? "warn" : "muted"}>{t(`activity.${run.activity}`)}</div>
             {billedToKey ? <div className="warn">{t("agent.billing")}</div> : null}

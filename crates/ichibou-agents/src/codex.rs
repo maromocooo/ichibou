@@ -37,6 +37,9 @@ pub async fn start(spec: SessionSpec) -> Result<Session> {
     if let Some(url) = &spec.mcp_url {
         process.args(["-c", &format!("mcp_servers.ichibou.url=\"{url}\"")]);
     }
+    for (key, value) in config_overrides(&spec) {
+        process.args(["-c", &format!("{key}=\"{value}\"")]);
+    }
     let mut child = process
         .current_dir(&spec.cwd)
         .stdin(Stdio::piped())
@@ -102,6 +105,102 @@ pub async fn start(spec: SessionSpec) -> Result<Session> {
 
 /// Largest approval request shown to the user; larger ones are declined.
 const MAX_APPROVAL_DETAIL: usize = 64 * 1024;
+
+/// Model and reasoning effort as configuration overrides. Names are
+/// checked first: the value is written inside a quoted string.
+pub fn config_overrides(spec: &SessionSpec) -> Vec<(&'static str, String)> {
+    [("model", &spec.model), ("model_reasoning_effort", &spec.effort)]
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let value = value.as_deref().filter(|v| crate::valid_name(v))?;
+            Some((key, value.to_string()))
+        })
+        .collect()
+}
+
+/// Asks the installed Codex CLI which models it offers.
+pub async fn models(program: Option<&std::path::Path>) -> Result<Vec<crate::ModelInfo>> {
+    let program = program.map(|p| p.to_path_buf()).unwrap_or_else(|| "codex".into());
+    let mut child = Process::new(&program)
+        .arg("app-server")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .with_context(|| format!("cannot start {}", program.display()))?;
+    let mut stdin = child.stdin.take().context("no stdin")?;
+    let mut lines = BufReader::new(child.stdout.take().context("no stdout")?).lines();
+    let conversation = async {
+        let mut send = async |message: Value| -> Result<()> {
+            stdin.write_all(format!("{message}\n").as_bytes()).await?;
+            stdin.flush().await?;
+            Ok(())
+        };
+        send(json!({ "id": 1, "method": "initialize", "params": { "clientInfo": {
+            "name": "ichibou", "title": "Ichibou", "version": env!("CARGO_PKG_VERSION") } } }))
+        .await?;
+        let mut models = Vec::new();
+        let mut asked = false;
+        while let Some(line) = lines.next_line().await? {
+            let Ok(message) = serde_json::from_str::<Value>(&line) else { continue };
+            match message["id"].as_u64() {
+                Some(1) if !asked => {
+                    asked = true;
+                    send(json!({ "method": "initialized" })).await?;
+                    send(json!({ "id": 2, "method": "model/list", "params": {} })).await?;
+                }
+                Some(2) => {
+                    if let Some(error) = message.get("error").filter(|e| !e.is_null()) {
+                        anyhow::bail!("{}", error["message"].as_str().unwrap_or("model/list failed"));
+                    }
+                    models.extend(parse_models(&message["result"]));
+                    match message["result"]["nextCursor"].as_str().map(str::to_string) {
+                        // The list is paged; ask until it ends (bounded).
+                        Some(next) if models.len() < 500 => {
+                            send(json!({ "id": 2, "method": "model/list", "params": { "cursor": next } })).await?;
+                        }
+                        _ => break,
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(models)
+    };
+    let result = tokio::time::timeout(std::time::Duration::from_secs(20), conversation)
+        .await
+        .context("Codex did not answer")?;
+    let _ = child.start_kill();
+    result
+}
+
+/// Reads the models out of a `model/list` result.
+pub fn parse_models(result: &Value) -> Vec<crate::ModelInfo> {
+    result["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|m| !m["hidden"].as_bool().unwrap_or(false))
+        .filter_map(|m| {
+            let id = m["id"].as_str().or(m["model"].as_str())?.to_string();
+            let efforts = m["supportedReasoningEfforts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                // Either plain names or objects with the name inside.
+                .filter_map(|e| e.as_str().or(e["reasoningEffort"].as_str()).map(str::to_string))
+                .collect();
+            Some(crate::ModelInfo {
+                name: m["displayName"].as_str().unwrap_or(&id).to_string(),
+                id,
+                efforts,
+                default_effort: m["defaultReasoningEffort"].as_str().map(str::to_string),
+                is_default: m["isDefault"].as_bool().unwrap_or(false),
+            })
+        })
+        .collect()
+}
 
 enum Pending {
     Initialize,
@@ -607,6 +706,8 @@ mod tests {
             read_only: false,
             instructions: "use the ichibou tools".into(),
             mcp_url: None,
+            model: None,
+            effort: None,
             claude_permission_mode: "acceptEdits".into(),
             fake_script: None,
             program: None,
@@ -715,6 +816,38 @@ mod tests {
 
         let (events, _) = p.incoming(json!({ "method": "some/new/notification", "params": {} }));
         assert_eq!(events, vec![AgentEvent::Unknown { kind: "some/new/notification".into() }]);
+    }
+
+    #[test]
+    fn model_and_effort_become_config_overrides() {
+        let mut s = spec();
+        assert!(config_overrides(&s).is_empty());
+        s.model = Some("gpt-6-astra".into());
+        s.effort = Some("xhigh".into());
+        assert_eq!(
+            config_overrides(&s),
+            vec![("model", "gpt-6-astra".to_string()), ("model_reasoning_effort", "xhigh".to_string())]
+        );
+        // A value that would break out of the quoted string is dropped.
+        s.model = Some("x\"\nsandbox_mode=\"danger-full-access".into());
+        assert_eq!(config_overrides(&s), vec![("model_reasoning_effort", "xhigh".to_string())]);
+    }
+
+    #[test]
+    fn model_list_is_read_in_both_effort_shapes() {
+        let models = parse_models(&json!({ "data": [
+            { "id": "gpt-6-astra", "displayName": "GPT-6-Astra", "hidden": false, "isDefault": false,
+              "defaultReasoningEffort": "medium",
+              "supportedReasoningEfforts": [ { "reasoningEffort": "low" }, { "reasoningEffort": "xhigh" } ] },
+            { "id": "gpt-6.1-sol", "displayName": "GPT-6.1-Sol", "isDefault": true,
+              "supportedReasoningEfforts": ["low", "ultra"] },
+            { "id": "internal", "hidden": true }
+        ], "nextCursor": null }));
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].efforts, vec!["low", "xhigh"]);
+        assert_eq!(models[0].default_effort.as_deref(), Some("medium"));
+        assert!(models[1].is_default);
+        assert_eq!(models[1].efforts, vec!["low", "ultra"]);
     }
 
     #[test]

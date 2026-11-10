@@ -38,6 +38,11 @@ pub fn args(spec: &SessionSpec) -> Vec<String> {
         ]);
     }
 
+    for (flag, value) in [("--model", &spec.model), ("--effort", &spec.effort)] {
+        if let Some(value) = value.as_deref().filter(|v| crate::valid_name(v)) {
+            args.extend([flag.to_string(), value.to_string()]);
+        }
+    }
     if !spec.instructions.is_empty() {
         args.extend(["--append-system-prompt".into(), spec.instructions.clone()]);
     }
@@ -380,6 +385,8 @@ mod tests {
             read_only: true,
             instructions: "be brief".into(),
             mcp_url: Some("http://127.0.0.1:1/mcp/t".into()),
+            model: Some("opus".into()),
+            effort: Some("xhigh".into()),
             claude_permission_mode: "acceptEdits".into(),
             fake_script: None,
             program: None,
@@ -390,9 +397,40 @@ mod tests {
         let at = args.iter().position(|a| a == "--tools").unwrap();
         assert_eq!(args[at + 1], "Read,Glob,Grep");
         assert!(args.contains(&"--strict-mcp-config".to_string()));
+        let at = args.iter().position(|a| a == "--model").unwrap();
+        assert_eq!(args[at + 1], "opus");
+        let at = args.iter().position(|a| a == "--effort").unwrap();
+        assert_eq!(args[at + 1], "xhigh");
         assert!(args.contains(&"--resume".to_string()));
         let at = args.iter().position(|a| a == "--allowedTools").unwrap();
         assert_eq!(args[at + 1], "mcp__ichibou");
         assert!(!args.iter().any(|a| a == "--bare"));
+    }
+
+    #[test]
+    fn unsafe_model_names_are_not_passed_on() {
+        assert!(crate::valid_name("claude-opus-5-5"));
+        assert!(crate::valid_name("gpt-6.1-sol"));
+        assert!(crate::valid_name("claude-opus-5-5[1m]"));
+        for bad in ["", "--dangerously-skip-permissions", "a b", "x\"; rm -rf /", "a\nb"] {
+            assert!(!crate::valid_name(bad), "{bad}");
+        }
+        let mut spec = SessionSpec {
+            agent: ichibou_core::AgentKind::Claude,
+            cwd: "/tmp".into(),
+            resume: None,
+            read_only: false,
+            instructions: String::new(),
+            mcp_url: None,
+            model: Some("--bare".into()),
+            effort: Some("max; echo".into()),
+            claude_permission_mode: "acceptEdits".into(),
+            fake_script: None,
+            program: None,
+        };
+        let args = args(&spec);
+        assert!(!args.iter().any(|a| a == "--model" || a == "--effort" || a == "--bare"));
+        spec.model = Some("sonnet".into());
+        assert!(super::args(&spec).contains(&"sonnet".to_string()));
     }
 }

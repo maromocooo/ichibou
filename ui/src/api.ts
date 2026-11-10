@@ -169,6 +169,7 @@ export interface Run {
   activity: Activity;
   session: string | null;
   auth?: string | null;
+  model?: string | null;
   last_message: string;
   started_at: string;
   updated_at: string;
@@ -211,6 +212,25 @@ export interface Config {
   claude_permission_mode: string;
   fake_script?: string | null;
   auto_verify: boolean;
+  claude_model?: string | null;
+  claude_effort?: string | null;
+  codex_model?: string | null;
+  codex_effort?: string | null;
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  efforts: string[];
+  default_effort?: string | null;
+  is_default: boolean;
+}
+
+export interface AgentOptions {
+  models: ModelInfo[];
+  /** The agent accepts model names beyond the listed ones. */
+  free_text: boolean;
+  error?: string | null;
 }
 
 export interface Overview {
@@ -327,6 +347,7 @@ export const api = {
   events: () => call<StoredEvent[]>("GET", "/events"),
   previews: () => call<PreviewInfo[]>("GET", "/previews"),
   setConfig: (config: Config) => call("POST", "/config", config),
+  agents: () => call<Record<string, AgentOptions>>("GET", "/agents"),
   startRun: (kind: "plan" | "scenarios" | "build" | "onboard", text?: string, agent?: AgentKind) =>
     call<Run>("POST", "/runs", { kind, text, agent }),
   resumeRun: () => call("POST", "/runs/resume", {}),

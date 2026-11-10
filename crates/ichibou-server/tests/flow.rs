@@ -199,6 +199,24 @@ async fn build_verify_annotate_demote_restart() {
         .unwrap();
     assert_eq!(refused.status(), 400);
 
+    // A model or effort name that could not be a name is refused.
+    for (field, value) in [("claude_model", "--bare"), ("codex_effort", "high\" x=\"1"), ("codex_model", "a b")] {
+        let mut config = json!({ "default_agent": "fake", "claude_permission_mode": "acceptEdits", "auto_verify": true });
+        config[field] = json!(value);
+        let refused = api
+            .http
+            .post(format!("{}/api/config", api.base))
+            .header("x-ichibou-token", &api.token)
+            .json(&config)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(refused.status(), 400, "{field}={value}");
+    }
+    let agents = api.get("/api/agents").await;
+    assert_eq!(agents["claude"]["models"][0]["id"], "fable");
+    assert_eq!(agents["claude"]["free_text"], true);
+
     // Nothing runs until the user approved the commands and the scenario.
     let overview = api.get("/api/overview").await;
     assert_eq!(overview["targets_approved"], false);

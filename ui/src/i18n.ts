@@ -19,6 +19,9 @@ const en = {
   "app.verifying": "Verifying…",
   "app.language": "Language",
   "app.agent": "Agent",
+  "app.model": "Model",
+  "app.effort": "Effort",
+  "app.default": "default",
 
   "tab.frontend": "Frontend",
   "tab.backend": "Backend",
@@ -203,6 +206,9 @@ const ja: Dict = {
   "app.verifying": "検証中…",
   "app.language": "言語",
   "app.agent": "エージェント",
+  "app.model": "モデル",
+  "app.effort": "推論の強さ",
+  "app.default": "既定",
 
   "tab.frontend": "フロントエンド",
   "tab.backend": "バックエンド",
@@ -385,6 +391,9 @@ const zh: Dict = {
   "app.verifying": "验证中…",
   "app.language": "语言",
   "app.agent": "智能体",
+  "app.model": "模型",
+  "app.effort": "推理强度",
+  "app.default": "默认",
 
   "tab.frontend": "前端",
   "tab.backend": "后端",

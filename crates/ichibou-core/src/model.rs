@@ -462,6 +462,9 @@ pub struct Run {
     pub generation: u64,
     #[serde(default)]
     pub pid: Option<u32>,
+    /// The model the agent CLI reports it is running.
+    #[serde(default)]
+    pub model: Option<String>,
     /// How the agent CLI says it is authenticated (Claude: `none` means the
     /// subscription login; anything else is an API key).
     #[serde(default)]

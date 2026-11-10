@@ -27,6 +27,8 @@ The previewed app and the build and test commands of a verification run are star
 
 What this does and does not promise: Ichibou is built so that an agent doing its job, or cutting corners, cannot make unfinished work look finished — editing a test, a requirement, a command or a verdict is either refused, ignored, or shown to you for approval. It is not a security boundary against code that is actively attacking the machine as your user; for that, run the agent and the project in a separate account, container or VM. Tools that sandbox themselves (the Swift Package Manager, Xcode build scripts) cannot start inside that guard; a target can set `guard: false` in `targets.yaml`, which you see and approve. Commands of such a target could write to Ichibou's state for any project, so prefer turning off the tool's own sandbox where it has a switch (SwiftPM: `--disable-sandbox`). Dependency directories you list under `link` (for example `node_modules`) are used as they are and are not part of the snapshot.
 
+Pick the agent, its model and its reasoning effort in the header. Codex models and the efforts each accepts are read from your installed Codex CLI; for Claude Code, choose an alias (`fable`, `opus`, `sonnet`, `haiku`) or type a model's full name. Leaving them at "default" uses whatever the CLI is configured for.
+
 Ichibou never starts an agent with permission checks bypassed. Claude sessions that write use the permission mode you configure (`acceptEdits` by default); Codex sessions run in its workspace sandbox and ask through Ichibou before running commands that need approval.
 
 ## Install

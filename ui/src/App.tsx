@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Anchor, ApiError, type Overview, type PreviewInfo, type StoredEvent, api, subscribe } from "./api";
 import { AgentPanel } from "./AgentPanel";
+import { AgentPicker } from "./AgentPicker";
 import { AnnotationDialog } from "./AnnotationDialog";
 import { App as AppCtx, type TabId } from "./app-context";
 import { Checklist } from "./Checklist";
@@ -98,21 +99,7 @@ export function App() {
                   : t("app.incomplete", { done, total })}
             </span>
             <span className="spacer" />
-            <label className="inline">
-              {t("app.agent")}
-              <select
-                value={overview.config.default_agent}
-                onChange={(e) =>
-                  act(() =>
-                    api.setConfig({ ...overview.config, default_agent: e.target.value as Overview["config"]["default_agent"] }),
-                  ).then(() => reload("status"))
-                }
-              >
-                <option value="claude">Claude Code</option>
-                <option value="codex">Codex</option>
-                {overview.config.fake_script ? <option value="fake">Fake (script)</option> : null}
-              </select>
-            </label>
+            <AgentPicker onChanged={() => reload("status")} />
             <label className="inline">
               {t("app.language")}
               <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>

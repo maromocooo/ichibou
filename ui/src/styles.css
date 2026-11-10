@@ -944,3 +944,12 @@ ul.assets {
 .diff .same {
   display: block;
 }
+
+.inline input.model {
+  width: 150px;
+  padding: 3px 6px;
+}
+
+.topbar {
+  flex-wrap: wrap;
+}
