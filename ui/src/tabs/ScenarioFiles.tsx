@@ -119,6 +119,7 @@ export function ScenarioFiles({ id }: { id: string }) {
             <div key={file.path} className="stack">
               <div className="row">
                 <span className="mono">{file.path}</span>
+                {file.executable ? <span className="muted">+x</span> : null}
                 {file.changed ? <span className="tag fix">{t("sc.changed")}</span> : null}
               </div>
               <Content file={file} />

@@ -350,6 +350,35 @@ async fn an_approved_executable_test_is_still_executable_when_restored() {
     let report = verifier(&f).run(None).await.unwrap();
     assert_eq!(report.results[0].outcome, Outcome::Passed, "{}", report.results[0].detail);
     assert_eq!(report.results[0].targets, "t1");
+
+    // The executable bit is part of what was approved: taking it away is a
+    // change to the definition, so approving that version starts over
+    // instead of inheriting the pass earned by the executable one.
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o644)).unwrap();
+    let (changed, _) = freeze(&f.project, &scenario).unwrap();
+    assert_ne!(changed.definition, approval.definition);
+}
+
+#[tokio::test]
+async fn files_ignored_only_by_git_exclude_do_not_break_the_copy() {
+    let f = fixture();
+    // Ignored through .git/info/exclude, which the copy will not have.
+    fs::create_dir_all(f.project.root.join(".git/info")).unwrap();
+    fs::write(f.project.root.join(".git/info/exclude"), "local.env\n").unwrap();
+    fs::write(f.project.root.join("local.env"), "MODE=test\n").unwrap();
+    let mut targets = f.project.load().unwrap().targets;
+    targets.targets[0].verify = Some(VerifyEnv {
+        copy: vec!["local.env".into()],
+        ..Default::default()
+    });
+    f.project.save_targets(&targets).unwrap();
+    let (approval, frozen) = freeze(&f.project, &f.scenario).unwrap();
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+    let report = verifier(&f).run(None).await.unwrap();
+    assert_eq!(report.results[0].outcome, Outcome::Passed, "{}", report.results[0].detail);
+    // The verdict is for the snapshot the status rules compute from the
+    // workspace.
+    assert_eq!(report.snapshot, snapshot::take_with(&f.project.root, &["local.env".into()]).unwrap());
 }
 
 #[tokio::test]

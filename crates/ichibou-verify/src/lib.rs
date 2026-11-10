@@ -450,9 +450,11 @@ fn copy_stable(root: &Path, work: &Path, extras: &[String]) -> Result<SnapshotId
         if work.exists() {
             std::fs::remove_dir_all(work).context("cannot clear the verification directory")?;
         }
-        let before = snapshot::take_with(root, extras)?;
-        snapshot::materialize(root, work, extras)?;
-        let copied = snapshot::take_with(work, extras)?;
+        // The copy is hashed over the same file list as the original.
+        let list = snapshot::list(root)?;
+        let before = snapshot::hash_listed(root, &list, extras)?;
+        snapshot::materialize_listed(root, work, &list, extras)?;
+        let copied = snapshot::hash_listed(work, &list, extras)?;
         if copied == before && snapshot::take_with(root, extras)? == before {
             return Ok(copied);
         }
@@ -492,22 +494,12 @@ fn first_changed_file(work: &Path, frozen: &FrozenScenario) -> Option<String> {
 /// together with the frozen copy; the definition hash is computed from the
 /// very bytes that are frozen.
 pub fn freeze(project: &Project, scenario: &Scenario) -> Result<(ScenarioApproval, FrozenScenario)> {
-    let files = ichibou_core::manifest::read_scenario_files(&project.root, scenario);
+    let (files, executable) = ichibou_core::manifest::read_scenario(&project.root, scenario);
     let approval = ScenarioApproval {
         scenario: scenario.id.clone(),
-        definition: ichibou_core::manifest::definition_of(scenario, &files)?,
+        definition: ichibou_core::manifest::definition_of(scenario, &files, &executable)?,
         at: Utc::now(),
     };
-    let executable = files
-        .keys()
-        .filter(|file| {
-            use std::os::unix::fs::PermissionsExt;
-            ichibou_core::manifest::resolve_inside(&project.root, file)
-                .and_then(|path| std::fs::metadata(path).ok())
-                .is_some_and(|meta| meta.permissions().mode() & 0o111 != 0)
-        })
-        .cloned()
-        .collect();
     Ok((
         approval,
         FrozenScenario {

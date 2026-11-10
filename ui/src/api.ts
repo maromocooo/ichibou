@@ -261,6 +261,7 @@ export interface ShownFile {
   path: string;
   current: ShownText;
   approved: ShownText;
+  executable: boolean;
   changed: boolean;
 }
 

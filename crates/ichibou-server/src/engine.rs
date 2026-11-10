@@ -575,8 +575,8 @@ impl Engine {
             .iter()
             .find(|s| s.id == id)
             .ok_or_else(|| anyhow!("unknown scenario {id}"))?;
-        let current = manifest::read_scenario_files(&self.project.root, scenario);
-        let definition = manifest::definition_of(scenario, &current)?;
+        let (current, executable) = manifest::read_scenario(&self.project.root, scenario);
+        let definition = manifest::definition_of(scenario, &current, &executable)?;
         let frozen = self.store.frozen_scenario(id)?;
         let text = |bytes: Option<&Vec<u8>>| -> serde_json::Value {
             match bytes {
@@ -605,7 +605,11 @@ impl Engine {
                     "path": name,
                     "current": text(now),
                     "approved": text(approved),
-                    "changed": frozen.is_some() && now != approved,
+                    // Whether it can be run directly is part of the test.
+                    "executable": executable.contains(name),
+                    "changed": frozen.as_ref().is_some_and(|f| {
+                        now != approved || f.executable.contains(name) != executable.contains(name)
+                    }),
                 })
             })
             .collect();

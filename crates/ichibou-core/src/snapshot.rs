@@ -56,22 +56,35 @@ fn is_executable(meta: &fs::Metadata) -> bool {
     }
 }
 
-/// Hashes the working tree.
-pub fn take(root: &Path) -> Result<SnapshotId> {
+/// The files a snapshot of `root` covers, relative to it, in a fixed order.
+pub fn list(root: &Path) -> Result<Vec<PathBuf>> {
+    files(root)
+}
+
+/// Hashes the listed files below `root`: path, kind (link, executable or
+/// plain) and content.
+fn hash_tree(root: &Path, list: &[PathBuf]) -> Result<SnapshotId> {
     let mut hasher = Sha256::new();
-    for rel in files(root)? {
-        let path = root.join(&rel);
-        let meta = fs::symlink_metadata(&path)
-            .with_context(|| format!("cannot stat {}", path.display()))?;
+    for rel in list {
+        let path = root.join(rel);
         hasher.update(rel.to_string_lossy().as_bytes());
         hasher.update([0]);
+        // A file can vanish between the walk and the read while an agent is
+        // editing; treat it as absent rather than failing the snapshot.
+        let meta = match fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                hasher.update(b"-");
+                hasher.update([0]);
+                continue;
+            }
+            Err(err) => return Err(err).context(format!("cannot stat {}", path.display())),
+        };
         if meta.file_type().is_symlink() {
             hasher.update(b"l");
             hasher.update(fs::read_link(&path)?.to_string_lossy().as_bytes());
         } else {
             hasher.update(if is_executable(&meta) { b"x" } else { b"f" });
-            // A file can vanish between the walk and the read while an agent
-            // is editing; treat it as absent rather than failing the snapshot.
             match fs::read(&path) {
                 Ok(bytes) => {
                     hasher.update((bytes.len() as u64).to_le_bytes());
@@ -86,12 +99,25 @@ pub fn take(root: &Path) -> Result<SnapshotId> {
     Ok(SnapshotId(hex(&hasher.finalize())))
 }
 
+/// Hashes the working tree.
+pub fn take(root: &Path) -> Result<SnapshotId> {
+    hash_tree(root, &files(root)?)
+}
+
 /// Hashes the working tree together with the ignored files that
 /// verification copies in (`verify.copy` in targets.yaml, for example
 /// `.env.test`). They are inputs to a run, so changing one must invalidate
 /// earlier verdicts just like editing a tracked file does.
 pub fn take_with(root: &Path, extra: &[String]) -> Result<SnapshotId> {
-    let tree = take(root)?;
+    hash_listed(root, &files(root)?, extra)
+}
+
+/// Like [`take_with`], for a given file list instead of walking `root`.
+/// A copy is hashed with the list taken from the original: which files are
+/// ignored depends on things the copy does not have (`.git/info/exclude`),
+/// so walking the copy could see a different set for the same content.
+pub fn hash_listed(root: &Path, list: &[PathBuf], extra: &[String]) -> Result<SnapshotId> {
+    let tree = hash_tree(root, list)?;
     let mut names: Vec<&String> = extra.iter().collect();
     names.sort();
     names.dedup();
@@ -124,10 +150,18 @@ pub fn take_with(root: &Path, extra: &[String]) -> Result<SnapshotId> {
 /// `extra` lists ignored files (for example `.env.test`) to copy as well;
 /// they are not part of the hash.
 pub fn materialize(root: &Path, dest: &Path, extra: &[String]) -> Result<SnapshotId> {
+    let list = files(root)?;
+    materialize_listed(root, dest, &list, extra)?;
+    hash_tree(dest, &list)
+}
+
+/// Copies the listed files, and the extra ignored ones, from `root` into
+/// `dest`.
+pub fn materialize_listed(root: &Path, dest: &Path, list: &[PathBuf], extra: &[String]) -> Result<()> {
     fs::create_dir_all(dest)?;
-    for rel in files(root)? {
-        let from = root.join(&rel);
-        let to = dest.join(&rel);
+    for rel in list {
+        let from = root.join(rel);
+        let to = dest.join(rel);
         if let Some(parent) = to.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -147,7 +181,6 @@ pub fn materialize(root: &Path, dest: &Path, extra: &[String]) -> Result<Snapsho
             }
         }
     }
-    let id = take(dest)?;
     for rel in extra {
         // The list comes from targets.yaml. A path that leaves the project
         // is neither read nor written.
@@ -162,5 +195,5 @@ pub fn materialize(root: &Path, dest: &Path, extra: &[String]) -> Result<Snapsho
             fs::copy(&from, &to)?;
         }
     }
-    Ok(id)
+    Ok(())
 }

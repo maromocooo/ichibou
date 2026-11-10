@@ -143,8 +143,8 @@ impl Project {
     /// Same as [`scenario_definition`], reading test files from another root
     /// (a materialized snapshot).
     pub fn scenario_definition_in(&self, root: &Path, scenario: &Scenario) -> Result<String> {
-        let files = read_scenario_files(root, scenario);
-        definition_of(scenario, &files)
+        let (files, executable) = read_scenario(root, scenario);
+        definition_of(scenario, &files, &executable)
     }
 }
 
@@ -181,12 +181,30 @@ pub fn read_scenario_files(
     root: &Path,
     scenario: &Scenario,
 ) -> std::collections::HashMap<String, Option<Vec<u8>>> {
+    read_scenario(root, scenario).0
+}
+
+/// Reads a scenario's test files once, with the list of those that are
+/// executable. Whether a test can be run directly is part of what it is, so
+/// the executable bit belongs to the definition like the content does.
+pub fn read_scenario(
+    root: &Path,
+    scenario: &Scenario,
+) -> (std::collections::HashMap<String, Option<Vec<u8>>>, Vec<String>) {
     use std::io::Read;
-    let read = |file: &str| -> Option<Vec<u8>> {
+    let mut executable = Vec::new();
+    let mut read = |file: &str| -> Option<Vec<u8>> {
         let path = resolve_inside(root, file)?;
         let meta = fs::metadata(&path).ok()?;
         if !meta.is_file() || meta.len() > MAX_SCENARIO_FILE {
             return None;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if meta.permissions().mode() & 0o111 != 0 {
+                executable.push(file.to_string());
+            }
         }
         // The size is checked again while reading: the file may grow.
         let mut bytes = Vec::new();
@@ -197,11 +215,14 @@ pub fn read_scenario_files(
             .ok()?;
         (bytes.len() as u64 <= MAX_SCENARIO_FILE).then_some(bytes)
     };
-    scenario
+    let files = scenario
         .files
         .iter()
         .map(|file| (file.clone(), read(file)))
-        .collect()
+        .collect();
+    executable.sort();
+    executable.dedup();
+    (files, executable)
 }
 
 /// Hash of everything that defines what a scenario checks, computed from
@@ -210,6 +231,7 @@ pub fn read_scenario_files(
 pub fn definition_of(
     scenario: &Scenario,
     files: &std::collections::HashMap<String, Option<Vec<u8>>>,
+    executable: &[String],
 ) -> Result<String> {
     let mut hasher = Sha256::new();
     hasher.update(serde_json::to_vec(scenario)?);
@@ -225,6 +247,7 @@ pub fn definition_of(
             }
             None => hasher.update([0]),
         }
+        hasher.update([executable.contains(&name) as u8]);
     }
     Ok(hex(&hasher.finalize()))
 }
