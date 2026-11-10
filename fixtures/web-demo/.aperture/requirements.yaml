@@ -1,0 +1,23 @@
+requirements:
+- id: REQ-PAGE-01
+  title: Notes page
+  description: A page that lists the saved notes and lets the user add one.
+  criteria:
+  - id: shows
+    text: The home page loads and shows the "Notes" heading.
+  manual_checks:
+  - id: looks
+    text: The page looks tidy at a narrow window width.
+- id: REQ-API-01
+  title: Notes API
+  description: An HTTP API to list and create notes.
+  criteria:
+  - id: list
+    text: GET /api/notes answers 200 with a JSON array.
+- id: REQ-DB-01
+  title: Notes are stored
+  description: Notes are kept in a database so they survive a restart.
+  depends_on: [REQ-API-01]
+  criteria:
+  - id: persist
+    text: A note created with POST /api/notes is returned by GET /api/notes.

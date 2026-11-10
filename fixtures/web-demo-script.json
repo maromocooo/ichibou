@@ -1,0 +1,170 @@
+{
+ "turns": [
+  [
+   {
+    "mcp": {
+     "tool": "activity_claim",
+     "arguments": {
+      "requirement": "REQ-PAGE-01"
+     }
+    }
+   },
+   {
+    "event": {
+     "type": "message",
+     "text": "Starting with the notes page."
+    }
+   },
+   {
+    "sleep_ms": 2500
+   },
+   {
+    "write": {
+     "path": "public/index.html",
+     "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <title>Notes</title>\n    <style>\n      body { font: 16px/1.5 system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 16px; }\n      form { display: flex; gap: 8px; }\n      input { flex: 1; padding: 8px; }\n      button { padding: 8px 16px; }\n      li { padding: 6px 0; border-bottom: 1px solid #ddd; }\n    </style>\n  </head>\n  <body>\n    <h1>Notes</h1>\n    <form id=\"add\">\n      <input id=\"text\" placeholder=\"Write a note\" aria-label=\"Note\" />\n      <button id=\"save\">Add</button>\n    </form>\n    <ul id=\"list\"></ul>\n    <script>\n      const list = document.getElementById(\"list\");\n      async function load() {\n        const response = await fetch(\"/api/notes\");\n        if (!response.ok) { list.innerHTML = \"<li>The API is not ready yet.</li>\"; return; }\n        const notes = await response.json();\n        list.innerHTML = notes.map((n) => \"<li>\" + n.text.replace(/</g, \"&lt;\") + \"</li>\").join(\"\");\n      }\n      document.getElementById(\"add\").addEventListener(\"submit\", async (event) => {\n        event.preventDefault();\n        const input = document.getElementById(\"text\");\n        if (!input.value.trim()) return;\n        await fetch(\"/api/notes\", { method: \"POST\", headers: { \"content-type\": \"application/json\" }, body: JSON.stringify({ text: input.value }) });\n        input.value = \"\";\n        load();\n      });\n      load();\n    </script>\n  </body>\n</html>\n"
+    }
+   },
+   {
+    "write": {
+     "path": "server.js",
+     "content": "const http = require(\"node:http\");\nconst fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\nconst port = Number(process.env.PORT || 4701);\n\nhttp\n  .createServer((request, response) => {\n    if (request.url === \"/\" || request.url === \"/index.html\") {\n      response.writeHead(200, { \"content-type\": \"text/html; charset=utf-8\" });\n      response.end(fs.readFileSync(path.join(__dirname, \"public/index.html\")));\n      return;\n    }\n    response.writeHead(404, { \"content-type\": \"application/json\" });\n    response.end(JSON.stringify({ error: \"not found\" }));\n  })\n  .listen(port, \"127.0.0.1\", () => console.log(`listening on ${port}`));\n"
+    }
+   },
+   {
+    "sleep_ms": 2500
+   },
+   {
+    "mcp": {
+     "tool": "activity_claim",
+     "arguments": {
+      "requirement": "REQ-PAGE-01",
+      "done": true
+     }
+    }
+   },
+   {
+    "mcp": {
+     "tool": "activity_claim",
+     "arguments": {
+      "requirement": "REQ-API-01"
+     }
+    }
+   },
+   {
+    "event": {
+     "type": "message",
+     "text": "Page is up. Adding the notes API."
+    }
+   },
+   {
+    "sleep_ms": 2500
+   },
+   {
+    "write": {
+     "path": "openapi.json",
+     "content": "{\n  \"openapi\": \"3.1.0\",\n  \"info\": {\n    \"title\": \"Notes API\",\n    \"version\": \"1.0.0\"\n  },\n  \"paths\": {\n    \"/api/notes\": {\n      \"get\": {\n        \"operationId\": \"listNotes\",\n        \"summary\": \"List notes, newest first\",\n        \"responses\": {\n          \"200\": {\n            \"description\": \"Notes\"\n          }\n        }\n      },\n      \"post\": {\n        \"operationId\": \"createNote\",\n        \"summary\": \"Create a note\",\n        \"requestBody\": {\n          \"required\": true,\n          \"content\": {\n            \"application/json\": {\n              \"schema\": {\n                \"type\": \"object\",\n                \"required\": [\n                  \"text\"\n                ],\n                \"properties\": {\n                  \"text\": {\n                    \"type\": \"string\"\n                  }\n                }\n              }\n            }\n          }\n        },\n        \"responses\": {\n          \"201\": {\n            \"description\": \"Created\"\n          },\n          \"400\": {\n            \"description\": \"Missing text\"\n          }\n        }\n      }\n    }\n  }\n}\n"
+    }
+   },
+   {
+    "write": {
+     "path": "server.js",
+     "content": "const http = require(\"node:http\");\nconst fs = require(\"node:fs\");\nconst path = require(\"node:path\");\n\nconst port = Number(process.env.PORT || 4701);\nconst notes = [];\n\nfunction json(response, status, body) {\n  response.writeHead(status, { \"content-type\": \"application/json\" });\n  response.end(JSON.stringify(body));\n}\n\nhttp\n  .createServer((request, response) => {\n    if (request.url === \"/\" || request.url === \"/index.html\") {\n      response.writeHead(200, { \"content-type\": \"text/html; charset=utf-8\" });\n      response.end(fs.readFileSync(path.join(__dirname, \"public/index.html\")));\n      return;\n    }\n    if (request.url === \"/api/notes\" && request.method === \"GET\") {\n      json(response, 200, notes);\n      return;\n    }\n    json(response, 404, { error: \"not found\" });\n  })\n  .listen(port, \"127.0.0.1\", () => console.log(`listening on ${port}`));\n"
+    }
+   },
+   {
+    "sleep_ms": 2500
+   },
+   {
+    "mcp": {
+     "tool": "activity_claim",
+     "arguments": {
+      "requirement": "REQ-API-01",
+      "done": true
+     }
+    }
+   },
+   {
+    "mcp": {
+     "tool": "activity_claim",
+     "arguments": {
+      "requirement": "REQ-DB-01"
+     }
+    }
+   },
+   {
+    "event": {
+     "type": "message",
+     "text": "API lists notes. Moving storage to SQLite."
+    }
+   },
+   {
+    "sleep_ms": 2500
+   },
+   {
+    "write": {
+     "path": "data/schema.sql",
+     "content": "CREATE TABLE IF NOT EXISTS notes (\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\n  text TEXT NOT NULL,\n  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP\n);\n"
+    }
+   },
+   {
+    "write": {
+     "path": "server.js",
+     "content": "const http = require(\"node:http\");\nconst fs = require(\"node:fs\");\nconst path = require(\"node:path\");\nconst { DatabaseSync } = require(\"node:sqlite\");\n\nconst port = Number(process.env.PORT || 4701);\nfs.mkdirSync(path.join(__dirname, \"data\"), { recursive: true });\nconst db = new DatabaseSync(path.join(__dirname, \"data/app.db\"));\ndb.exec(fs.readFileSync(path.join(__dirname, \"data/schema.sql\"), \"utf8\"));\n\nfunction json(response, status, body) {\n  response.writeHead(status, { \"content-type\": \"application/json\" });\n  response.end(JSON.stringify(body));\n}\n\nhttp\n  .createServer((request, response) => {\n    if (request.url === \"/\" || request.url === \"/index.html\") {\n      response.writeHead(200, { \"content-type\": \"text/html; charset=utf-8\" });\n      response.end(fs.readFileSync(path.join(__dirname, \"public/index.html\")));\n      return;\n    }\n    if (request.url === \"/api/notes\" && request.method === \"GET\") {\n      json(response, 200, db.prepare(\"SELECT id, text, created_at FROM notes ORDER BY id DESC\").all());\n      return;\n    }\n    if (request.url === \"/api/notes\" && request.method === \"POST\") {\n      let body = \"\";\n      request.on(\"data\", (chunk) => (body += chunk));\n      request.on(\"end\", () => {\n        let text = \"\";\n        try {\n          text = String(JSON.parse(body).text || \"\").trim();\n        } catch {\n          text = \"\";\n        }\n        if (!text) return json(response, 400, { error: \"text is required\" });\n        const result = db.prepare(\"INSERT INTO notes (text) VALUES (?)\").run(text);\n        json(response, 201, { id: Number(result.lastInsertRowid), text });\n      });\n      return;\n    }\n    json(response, 404, { error: \"not found\" });\n  })\n  .listen(port, \"127.0.0.1\", () => console.log(`listening on ${port}`));\n"
+    }
+   },
+   {
+    "sleep_ms": 2500
+   },
+   {
+    "mcp": {
+     "tool": "activity_claim",
+     "arguments": {
+      "requirement": "REQ-DB-01",
+      "done": true
+     }
+    }
+   },
+   {
+    "mcp": {
+     "tool": "evidence_submit",
+     "arguments": {
+      "requirement": "REQ-DB-01",
+      "note": "Notes are stored in data/app.db; the schema is applied on start."
+     }
+    }
+   },
+   {
+    "event": {
+     "type": "message",
+     "text": "All three requirements are implemented. Aperture will verify them now."
+    }
+   }
+  ],
+  [
+   {
+    "handle_annotations": {
+     "write": {
+      "path": "public/index.html",
+      "content": "<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n    <title>Notes</title>\n    <style>\n      body { font: 16px/1.5 system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 16px; }\n      form { display: flex; gap: 8px; }\n      input { flex: 1; padding: 8px; }\n      button { padding: 8px 16px; }\n      li { padding: 6px 0; border-bottom: 1px solid #ddd; }\n    </style>\n  </head>\n  <body>\n    <h1>Notes</h1>\n    <form id=\"add\">\n      <input id=\"text\" placeholder=\"Write a note\" aria-label=\"Note\" />\n      <button id=\"save\">Save note</button>\n    </form>\n    <ul id=\"list\"></ul>\n    <script>\n      const list = document.getElementById(\"list\");\n      async function load() {\n        const response = await fetch(\"/api/notes\");\n        if (!response.ok) { list.innerHTML = \"<li>The API is not ready yet.</li>\"; return; }\n        const notes = await response.json();\n        list.innerHTML = notes.map((n) => \"<li>\" + n.text.replace(/</g, \"&lt;\") + \"</li>\").join(\"\");\n      }\n      document.getElementById(\"add\").addEventListener(\"submit\", async (event) => {\n        event.preventDefault();\n        const input = document.getElementById(\"text\");\n        if (!input.value.trim()) return;\n        await fetch(\"/api/notes\", { method: \"POST\", headers: { \"content-type\": \"application/json\" }, body: JSON.stringify({ text: input.value }) });\n        input.value = \"\";\n        load();\n      });\n      load();\n    </script>\n  </body>\n</html>\n"
+     },
+     "reply": "Changed the button label to \"Save note\"."
+    }
+   },
+   {
+    "event": {
+     "type": "message",
+     "text": "Handled the feedback."
+    }
+   }
+  ]
+ ],
+ "read_only_turns": [
+  [
+   {
+    "handle_annotations": {
+     "reply": "The list is sorted by id, newest first (ORDER BY id DESC in server.js)."
+    }
+   }
+  ]
+ ]
+}

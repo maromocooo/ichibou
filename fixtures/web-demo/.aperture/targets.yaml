@@ -1,0 +1,19 @@
+targets:
+- name: web
+  kind: web
+  dev:
+    command: node server.js
+    url: http://127.0.0.1:{port}
+    port: 4701
+  verify:
+    start:
+      command: node server.js
+      url: http://127.0.0.1:{port}
+apis:
+- node: api
+  openapi_file: openapi.json
+  base_url: http://127.0.0.1:4701
+databases:
+- node: db
+  kind: sqlite
+  url: data/app.db

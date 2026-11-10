@@ -1,0 +1,8 @@
+{"type": "system", "subtype": "hook_started", "hook_event": "SessionStart", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af"}
+{"type": "system", "subtype": "hook_started", "hook_event": "SessionStart", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af"}
+{"type": "system", "subtype": "hook_response", "hook_event": "SessionStart", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af"}
+{"type": "system", "subtype": "init", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af", "model": "claude-fable-5-2", "apiKeySource": "none", "permissionMode": "plan", "claude_code_version": "2.1.322", "cwd": "/work"}
+{"type": "system", "subtype": "hook_response", "hook_event": "SessionStart", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af"}
+{"type": "assistant", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af", "message": {"role": "assistant", "content": [{"type": "text", "text": "done"}]}}
+{"type": "rate_limit_event", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af", "rate_limit_info": {"status": "allowed", "resetsAt": 1794553200, "rateLimitType": "seven_day"}}
+{"type": "result", "subtype": "success", "is_error": false, "result": "done", "session_id": "6c1bdef8-5d39-4f7c-8c36-860c699e20af", "num_turns": 1, "stop_reason": "end_turn", "permission_denials": []}

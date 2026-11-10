@@ -1,0 +1,28 @@
+nodes:
+- id: web
+  kind: client
+  title: Notes page
+  description: Static page that calls the API.
+  paths: [public/index.html]
+  requirements: [REQ-PAGE-01]
+- id: api
+  kind: api
+  title: Notes API
+  description: Node HTTP server.
+  paths: [server.js, openapi.json]
+  requirements: [REQ-API-01]
+- id: db
+  kind: db
+  title: SQLite
+  description: One table of notes.
+  paths: [data/schema.sql]
+  requirements: [REQ-DB-01]
+edges:
+- from: web
+  to: api
+  label: fetch
+  requirements: [REQ-PAGE-01, REQ-API-01]
+- from: api
+  to: db
+  label: SQL
+  requirements: [REQ-DB-01]

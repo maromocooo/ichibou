@@ -1,0 +1,18 @@
+[package]
+name = "aperture-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "aperture"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+aperture-core = { path = "../aperture-core" }
+aperture-server = { path = "../aperture-server" }
+clap.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing-subscriber.workspace = true

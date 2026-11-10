@@ -1,0 +1,25 @@
+scenarios:
+- id: page-loads
+  title: Home page shows the Notes heading
+  target: web
+  runner: command
+  covers:
+  - {requirement: REQ-PAGE-01, criterion: shows}
+  files: [scenarios/page.sh, scenarios/junit.sh]
+  command: sh scenarios/page.sh {report}
+- id: notes-list
+  title: Listing notes returns a JSON array
+  target: web
+  runner: command
+  covers:
+  - {requirement: REQ-API-01, criterion: list}
+  files: [scenarios/list.sh, scenarios/junit.sh]
+  command: sh scenarios/list.sh {report}
+- id: notes-persist
+  title: A created note is listed afterwards
+  target: web
+  runner: command
+  covers:
+  - {requirement: REQ-DB-01, criterion: persist}
+  files: [scenarios/persist.sh, scenarios/junit.sh]
+  command: sh scenarios/persist.sh {report}
