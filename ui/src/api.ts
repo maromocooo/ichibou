@@ -252,6 +252,23 @@ export interface PreviewInfo {
   log: string;
 }
 
+export type ShownText = null | { text: string } | { too_large: number };
+
+export interface ShownFile {
+  path: string;
+  current: ShownText;
+  approved: ShownText;
+  changed: boolean;
+}
+
+export interface ScenarioFiles {
+  /** Hash of exactly the current content in `files`; send it to approve. */
+  definition: string;
+  approved: boolean;
+  entry_changed: boolean;
+  files: ShownFile[];
+}
+
 export interface DbTable {
   name: string;
   columns: { name: string; type: string; nullable: boolean; primary_key: boolean }[];
@@ -322,6 +339,7 @@ export const api = {
   // Hashes are the scenario definitions that were on screen (from the overview).
   approveScenario: (id: string, hash: string) =>
     call("POST", `/scenarios/${encodeURIComponent(id)}/approve`, { hash }),
+  scenarioFiles: (id: string) => call<ScenarioFiles>("GET", `/scenarios/${encodeURIComponent(id)}/files`),
   approveScenarios: (hashes: Record<string, string>) => call("POST", "/scenarios/approve-all", { hashes }),
   verify: () => call("POST", "/verify", {}),
   manual: (requirement: string, check: string, confirmed: boolean) =>

@@ -237,6 +237,22 @@ async fn build_verify_annotate_demote_restart() {
     // The daemon keeps nothing of its own inside the workspace.
     assert!(!root.join(".aperture/local").exists());
 
+    // The test files can be read next to their approved copies, and an
+    // edit shows up as a change against what was approved.
+    let files = api.get("/api/scenarios/answer/files").await;
+    assert_eq!(files["approved"], true);
+    assert_eq!(files["files"][0]["path"], "check.sh");
+    assert_eq!(files["files"][0]["changed"], false);
+    assert!(files["files"][0]["current"]["text"].as_str().unwrap().contains("answer.txt"));
+    let check = fs::read_to_string(root.join("check.sh")).unwrap();
+    fs::write(root.join("check.sh"), "exit 0\n").unwrap();
+    let edited = api.get("/api/scenarios/answer/files").await;
+    assert_eq!(edited["files"][0]["changed"], true);
+    assert_eq!(edited["files"][0]["current"]["text"], "exit 0\n");
+    assert!(edited["files"][0]["approved"]["text"].as_str().unwrap().contains("answer.txt"));
+    assert_ne!(edited["definition"], files["definition"]);
+    fs::write(root.join("check.sh"), check).unwrap();
+
     // The starting point does not satisfy the requirement.
     api.post("/api/verify", json!({})).await;
     api.until("initial failure", |o| requirement_state(o) == "failing").await;

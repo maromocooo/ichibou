@@ -66,17 +66,16 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 | Claude Code / Codex：デーモン経由の要件洗い出し | Claude Code 2.1 と Codex CLI 0.167 で動作 |
 | Claude Code：全体ビルド、検証、注釈の修正 | 動作（デモアプリを実装し、承認済みシナリオがすべて成功） |
 | Codex：検証結果を返しながらの全体ビルド | 実装済み。動かしたのは要件洗い出しのみ |
-| Claude Code：既存リポジトリの整理、質問注釈への回答 | 動作（読み取り専用セッション：読み取り用ツールと Aperture 自身のツールのみ） |
-| Codex：既存リポジトリの整理、質問注釈への回答 | 実装済み。未実行 |
+| Claude Code / Codex：既存リポジトリの整理、質問注釈への回答 | 動作（読み取り専用セッション：読み取り用ツールと Aperture 自身のツールのみ） |
 | Web プレビュー、要素・範囲への注釈 | 動作 |
 | iOS Simulator プレビュー（タップには `idb` が必要） | 動作。[serve-sim](https://github.com/EvanBacon/serve-sim) があればライブ映像、なければ 1〜2 秒ごとのスクリーンショット |
 | Android Emulator プレビュー（`adb`） | 動作。数秒ごとのスクリーンショット |
 | macOS ウィンドウのプレビュー | 動作。表示のみ（操作の転送なし）。`aperture` を起動するアプリ（ターミナル、またはその下で常駐するマルチプレクサ）に画面収録の許可が必要 |
 | OpenAPI 表示とリクエスト実行、SQLite のテーブル | 動作 |
-| PostgreSQL のテーブル | 実装済み。サーバーに対しては未確認 |
+| PostgreSQL のテーブル | 動作 |
 | シナリオ実行：JUnit XML を出力する任意のコマンド | 動作 |
 | シナリオ実行：Maestro | iOS Simulator と Android Emulator で動作（Java が必要） |
-| シナリオ実行：Playwright | 実装済み。未実行 |
+| シナリオ実行：Playwright | 動作 |
 
 ## 開発
 

@@ -921,3 +921,25 @@ ul.assets {
     flex-wrap: wrap;
   }
 }
+
+/* Scenario test files */
+.log.code {
+  max-height: 420px;
+  white-space: pre;
+  word-break: normal;
+  overflow: auto;
+}
+
+.diff .add {
+  display: block;
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+}
+
+.diff .del {
+  display: block;
+  background: color-mix(in srgb, var(--bad) 16%, transparent);
+}
+
+.diff .same {
+  display: block;
+}

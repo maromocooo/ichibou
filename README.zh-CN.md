@@ -66,17 +66,16 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 | Claude Code 与 Codex：通过守护进程列出需求 | 在 Claude Code 2.1 和 Codex CLI 0.167 上可用 |
 | Claude Code：完整构建、验证、根据标注修改 | 可用（已构建示例应用，已批准的场景全部通过） |
 | Codex：带验证反馈的完整构建 | 已实现；目前只运行过列出需求这一步 |
-| Claude Code：梳理已有仓库、回答提问标注 | 可用（只读会话：仅有读取类工具和 Aperture 自身的工具） |
-| Codex：梳理已有仓库、回答提问标注 | 已实现，尚未运行 |
+| Claude Code 与 Codex：梳理已有仓库、回答提问标注 | 可用（只读会话：仅有读取类工具和 Aperture 自身的工具） |
 | Web 预览、元素与区域标注 | 可用 |
 | iOS 模拟器预览（轻触需要 `idb`） | 可用；安装 [serve-sim](https://github.com/EvanBacon/serve-sim) 后为实时视频，否则每一两秒刷新一次截图 |
 | Android 模拟器预览（`adb`） | 可用；每隔几秒刷新一次截图 |
 | macOS 窗口预览 | 可用，仅查看（不转发操作）。启动 `aperture` 的应用（终端，或其上常驻的多路复用器）需要屏幕录制权限 |
 | OpenAPI 查看与请求发送、SQLite 表结构 | 可用 |
-| PostgreSQL 表结构 | 已实现，尚未对服务器测试 |
+| PostgreSQL 表结构 | 可用 |
 | 场景运行器：任何输出 JUnit XML 的命令 | 可用 |
 | 场景运行器：Maestro | 在 iOS 模拟器和 Android 模拟器上可用（需要 Java） |
-| 场景运行器：Playwright | 已实现，尚未实际运行 |
+| 场景运行器：Playwright | 可用 |
 
 ## 开发
 

@@ -515,6 +515,61 @@ impl Engine {
         Ok(())
     }
 
+    /// The test files of a scenario as they are now, next to the approved
+    /// copies. The files are read once: the returned `definition` is the hash
+    /// of exactly the content returned, so approving from this view approves
+    /// what was read here.
+    pub fn scenario_files(&self, id: &str) -> Result<serde_json::Value> {
+        const MAX: usize = 200 * 1024;
+        let manifest = self.project.load()?;
+        let scenario = manifest
+            .scenarios
+            .scenarios
+            .iter()
+            .find(|s| s.id == id)
+            .ok_or_else(|| anyhow!("unknown scenario {id}"))?;
+        let current = manifest::read_scenario_files(&self.project.root, scenario);
+        let definition = manifest::definition_of(scenario, &current)?;
+        let frozen = self.store.frozen_scenario(id)?;
+        let text = |bytes: Option<&Vec<u8>>| -> serde_json::Value {
+            match bytes {
+                None => serde_json::Value::Null,
+                Some(b) if b.len() > MAX => serde_json::json!({ "too_large": b.len() }),
+                Some(b) => serde_json::json!({ "text": String::from_utf8_lossy(b) }),
+            }
+        };
+        let mut names: Vec<String> = scenario.files.clone();
+        if let Some(frozen) = &frozen {
+            for name in frozen.files.keys() {
+                if !names.contains(name) {
+                    names.push(name.clone());
+                }
+            }
+        }
+        let files: Vec<serde_json::Value> = names
+            .iter()
+            .map(|name| {
+                let now = current.get(name).and_then(|c| c.as_ref());
+                let approved = frozen
+                    .as_ref()
+                    .and_then(|f| f.files.get(name))
+                    .and_then(|c| c.as_ref());
+                serde_json::json!({
+                    "path": name,
+                    "current": text(now),
+                    "approved": text(approved),
+                    "changed": frozen.is_some() && now != approved,
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "definition": definition,
+            "approved": frozen.is_some(),
+            "entry_changed": frozen.as_ref().is_some_and(|f| &f.scenario != scenario),
+            "files": files,
+        }))
+    }
+
     pub fn confirm_manual(&self, requirement: &str, check: &str, confirmed: bool) -> Result<()> {
         if confirmed {
             self.store.confirm_manual(&ManualConfirmation {

@@ -97,6 +97,7 @@ pub fn router(engine: Arc<Engine>) -> Router<Arc<Engine>> {
         .route("/annotations/{id}/reopen", post(reopen))
         .route("/scenarios/{id}/approve", post(approve_scenario))
         .route("/scenarios/approve-all", post(approve_all))
+        .route("/scenarios/{id}/files", get(scenario_files))
         .route("/verify", post(verify))
         .route("/manual", post(manual))
         .route("/proposals/{kind}", post(decide_proposal))
@@ -585,4 +586,8 @@ async fn approve_requirements(
 ) -> ApiResult {
     engine.approve_requirements(&seen.hash)?;
     ok()
+}
+
+async fn scenario_files(State(engine): State<Arc<Engine>>, Path(id): Path<String>) -> ApiResult {
+    Ok(Json(engine.scenario_files(&id)?))
 }

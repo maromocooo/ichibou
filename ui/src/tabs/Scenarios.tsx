@@ -2,6 +2,7 @@ import { api } from "../api";
 import { useApp } from "../app-context";
 import { CRITERION_MARK } from "../Checklist";
 import { useT } from "../i18n";
+import { ScenarioFiles } from "./ScenarioFiles";
 
 export function Scenarios() {
   const t = useT();
@@ -96,6 +97,7 @@ export function Scenarios() {
                 </>
               ) : null}
             </dl>
+            {scenario.files.length > 0 ? <ScenarioFiles id={scenario.id} /> : null}
             {result ? (
               <details open={result.outcome !== "passed"}>
                 <summary>
