@@ -58,6 +58,14 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 
 A scripted stand-in agent builds a small notes app step by step.
 
+### Build a release archive
+
+```sh
+scripts/package.sh     # writes dist/aperture-<version>-<os>-<arch>.tar.gz and its SHA-256
+```
+
+The binary carries the UI inside it; the archive is all that needs to be shipped.
+
 ## What works today
 
 | Area | State |

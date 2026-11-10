@@ -58,6 +58,14 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 
 スクリプトで動く代役のエージェントが、小さなメモアプリを段階的に作ります。
 
+### リリース用アーカイブの作成
+
+```sh
+scripts/package.sh     # dist/aperture-<version>-<os>-<arch>.tar.gz と SHA-256 を出力
+```
+
+バイナリは UI を内蔵しているので、配布に必要なのはこのアーカイブだけです。
+
 ## 現在動くもの
 
 | 領域 | 状態 |

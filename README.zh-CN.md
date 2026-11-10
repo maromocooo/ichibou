@@ -58,6 +58,14 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 
 一个由脚本驱动的替身智能体会一步步构建一个小型笔记应用。
 
+### 构建发布包
+
+```sh
+scripts/package.sh     # 生成 dist/aperture-<version>-<os>-<arch>.tar.gz 及其 SHA-256
+```
+
+可执行文件内置了界面，发布时只需要这个压缩包。
+
 ## 目前可用的功能
 
 | 范围 | 状态 |

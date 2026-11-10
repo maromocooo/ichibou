@@ -18,7 +18,8 @@ test.beforeAll(async () => {
   const project = path.join(scratch, "web-demo");
   cpSync(path.join(repo, "fixtures/web-demo"), project, { recursive: true });
   daemon = spawn(
-    path.join(repo, "target/debug/aperture"),
+    // APERTURE_BIN points the test at another build (a release binary).
+    process.env.APERTURE_BIN ?? path.join(repo, "target/debug/aperture"),
     ["--project", project, "serve", "--port", "0", "--no-open", "--json", "--agent", "fake",
      "--fake-script", path.join(repo, "fixtures/web-demo-script.json")],
     // State goes to the scratch folder, not the real per-user directory.
