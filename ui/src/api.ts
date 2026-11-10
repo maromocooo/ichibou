@@ -124,6 +124,7 @@ export interface ScenarioStatus {
   state: CriterionState;
   pending_change: boolean;
   last_result: string | null;
+  definition: string | null;
 }
 
 export type Provenance = "declared" | "present" | "verified";
@@ -318,8 +319,10 @@ export const api = {
   comment: (id: string, text: string) => call("POST", `/annotations/${id}/comment`, { text }),
   resolve: (id: string) => call("POST", `/annotations/${id}/resolve`, {}),
   reopen: (id: string, text?: string) => call("POST", `/annotations/${id}/reopen`, { text }),
-  approveScenario: (id: string) => call("POST", `/scenarios/${encodeURIComponent(id)}/approve`, {}),
-  approveAllScenarios: () => call("POST", "/scenarios/approve-all", {}),
+  // Hashes are the scenario definitions that were on screen (from the overview).
+  approveScenario: (id: string, hash: string) =>
+    call("POST", `/scenarios/${encodeURIComponent(id)}/approve`, { hash }),
+  approveScenarios: (hashes: Record<string, string>) => call("POST", "/scenarios/approve-all", { hashes }),
   verify: () => call("POST", "/verify", {}),
   manual: (requirement: string, check: string, confirmed: boolean) =>
     call("POST", "/manual", { requirement, check, confirmed }),

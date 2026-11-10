@@ -119,23 +119,46 @@ impl Project {
     /// Same as [`scenario_definition`], reading test files from another root
     /// (a materialized snapshot).
     pub fn scenario_definition_in(&self, root: &Path, scenario: &Scenario) -> Result<String> {
-        let mut hasher = Sha256::new();
-        hasher.update(serde_json::to_vec(scenario)?);
-        let mut files = scenario.files.clone();
-        files.sort();
-        for file in files {
-            hasher.update(file.as_bytes());
-            hasher.update([0]);
-            match fs::read(root.join(&file)) {
-                Ok(bytes) => {
-                    hasher.update([1]);
-                    hasher.update(&bytes);
-                }
-                Err(_) => hasher.update([0]),
-            }
-        }
-        Ok(hex(&hasher.finalize()))
+        let files = read_scenario_files(root, scenario);
+        definition_of(scenario, &files)
     }
+}
+
+/// Reads a scenario's test files once. `None` marks a file that is missing.
+pub fn read_scenario_files(
+    root: &Path,
+    scenario: &Scenario,
+) -> std::collections::HashMap<String, Option<Vec<u8>>> {
+    scenario
+        .files
+        .iter()
+        .map(|file| (file.clone(), fs::read(root.join(file)).ok()))
+        .collect()
+}
+
+/// Hash of everything that defines what a scenario checks, computed from
+/// file contents already in memory. Approval freezes these same bytes, so
+/// the hash and the frozen copy cannot disagree.
+pub fn definition_of(
+    scenario: &Scenario,
+    files: &std::collections::HashMap<String, Option<Vec<u8>>>,
+) -> Result<String> {
+    let mut hasher = Sha256::new();
+    hasher.update(serde_json::to_vec(scenario)?);
+    let mut names = scenario.files.clone();
+    names.sort();
+    for name in names {
+        hasher.update(name.as_bytes());
+        hasher.update([0]);
+        match files.get(&name).and_then(|content| content.as_ref()) {
+            Some(bytes) => {
+                hasher.update([1]);
+                hasher.update(bytes);
+            }
+            None => hasher.update([0]),
+        }
+    }
+    Ok(hex(&hasher.finalize()))
 }
 
 pub(crate) fn hex(bytes: &[u8]) -> String {

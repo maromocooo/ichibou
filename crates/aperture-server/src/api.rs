@@ -268,16 +268,30 @@ async fn reopen(
     Ok(Json(serde_json::to_value(annotation)?))
 }
 
-async fn approve_scenario(State(engine): State<Arc<Engine>>, Path(id): Path<String>) -> ApiResult {
-    engine.approve_scenario(&id)?;
+async fn approve_scenario(
+    State(engine): State<Arc<Engine>>,
+    Path(id): Path<String>,
+    Json(seen): Json<Seen>,
+) -> ApiResult {
+    engine.approve_scenario(&id, &seen.hash)?;
     // A newly approved definition has no verdict yet.
     engine.verify_if_stale();
     ok()
 }
 
-async fn approve_all(State(engine): State<Arc<Engine>>) -> ApiResult {
-    for scenario in engine.project.load()?.scenarios.scenarios {
-        engine.approve_scenario(&scenario.id)?;
+#[derive(Deserialize)]
+struct SeenScenarios {
+    /// Scenario id -> definition hash the UI displayed.
+    hashes: std::collections::HashMap<String, String>,
+}
+
+/// Approves exactly the scenarios the UI listed, each at the version shown.
+async fn approve_all(
+    State(engine): State<Arc<Engine>>,
+    Json(seen): Json<SeenScenarios>,
+) -> ApiResult {
+    for (id, hash) in &seen.hashes {
+        engine.approve_scenario(id, hash)?;
     }
     engine.verify_if_stale();
     ok()

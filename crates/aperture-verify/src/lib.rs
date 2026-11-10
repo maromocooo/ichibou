@@ -417,15 +417,14 @@ fn restore_approved_files(work: &Path, frozen: &FrozenScenario) -> Result<()> {
     Ok(())
 }
 
-/// Reads the scenario's current files so the user can approve them.
+/// Reads the scenario's current files once and returns the approval record
+/// together with the frozen copy; the definition hash is computed from the
+/// very bytes that are frozen.
 pub fn freeze(project: &Project, scenario: &Scenario) -> Result<(ScenarioApproval, FrozenScenario)> {
-    let mut files = std::collections::HashMap::new();
-    for path in &scenario.files {
-        files.insert(path.clone(), std::fs::read(project.root.join(path)).ok());
-    }
+    let files = aperture_core::manifest::read_scenario_files(&project.root, scenario);
     let approval = ScenarioApproval {
         scenario: scenario.id.clone(),
-        definition: project.scenario_definition(scenario)?,
+        definition: aperture_core::manifest::definition_of(scenario, &files)?,
         at: Utc::now(),
     };
     Ok((

@@ -322,15 +322,6 @@ impl Engine {
         Ok((manifest, status))
     }
 
-    pub fn proposals(&self) -> Proposals {
-        let get = |key: &str| self.store.kv_get(key).ok().flatten();
-        Proposals {
-            requirements: get("proposal:requirements").and_then(|t| serde_json::from_str(&t).ok()),
-            architecture: get("proposal:architecture").and_then(|t| serde_json::from_str(&t).ok()),
-            targets: get("proposal:targets").and_then(|t| serde_json::from_str(&t).ok()),
-        }
-    }
-
     /// Hash of a manifest file as it is on disk now.
     pub fn manifest_hash(&self, file: &str) -> String {
         let bytes = std::fs::read(self.project.manifest_dir().join(file)).unwrap_or_default();
@@ -394,6 +385,8 @@ impl Engine {
         manifest.targets = manifest::parse(&targets_bytes)?;
         manifest.requirements = manifest::parse(&requirements_bytes)?;
         let (manifest, status) = self.status_for(manifest)?;
+        // Each pending proposal is read once; the text that is hashed is
+        // the text that is parsed and shown.
         let stored = |kind: &str| {
             self.store
                 .kv_get(&format!("proposal:{kind}"))
@@ -401,11 +394,17 @@ impl Engine {
                 .flatten()
                 .filter(|text| text != "null")
         };
-        let proposals = self.proposals();
+        let (requirements, architecture, targets) =
+            (stored("requirements"), stored("architecture"), stored("targets"));
+        let proposals = Proposals {
+            requirements: requirements.as_deref().and_then(|t| serde_json::from_str(t).ok()),
+            architecture: architecture.as_deref().and_then(|t| serde_json::from_str(t).ok()),
+            targets: targets.as_deref().and_then(|t| serde_json::from_str(t).ok()),
+        };
         let proposal_hashes = ProposalHashes {
-            requirements: stored("requirements").map(|t| hash(t.as_bytes())),
-            architecture: stored("architecture").map(|t| hash(t.as_bytes())),
-            targets: stored("targets").map(|t| hash(t.as_bytes())),
+            requirements: requirements.map(|t| hash(t.as_bytes())),
+            architecture: architecture.map(|t| hash(t.as_bytes())),
+            targets: targets.map(|t| hash(t.as_bytes())),
         };
         let mut latest: HashMap<String, VerificationResult> = HashMap::new();
         for result in self.store.results()? {
@@ -497,7 +496,9 @@ impl Engine {
 
     // -- scenarios and verification ----------------------------------------
 
-    pub fn approve_scenario(self: &Arc<Self>, id: &str) -> Result<()> {
+    /// `seen` is the definition hash the UI displayed for this scenario. If
+    /// the scenario or its test files changed since, the approval is refused.
+    pub fn approve_scenario(self: &Arc<Self>, id: &str, seen: &str) -> Result<()> {
         let manifest = self.project.load()?;
         let scenario = manifest
             .scenarios
@@ -506,6 +507,9 @@ impl Engine {
             .find(|s| s.id == id)
             .ok_or_else(|| anyhow!("unknown scenario {id}"))?;
         let (approval, frozen) = aperture_verify::freeze(&self.project, scenario)?;
+        if approval.definition != seen {
+            bail!("scenario {id} or its test files changed after they were shown to you; review it again");
+        }
         self.store.approve_scenario(&approval, &frozen)?;
         self.notify(UiEvent::Status);
         Ok(())

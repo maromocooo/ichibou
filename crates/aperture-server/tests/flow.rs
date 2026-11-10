@@ -73,6 +73,17 @@ impl Client {
     }
 }
 
+/// What the UI sends to approve every scenario at the version it shows.
+fn shown_scenarios(overview: &Value) -> Value {
+    let hashes: serde_json::Map<String, Value> = overview["status"]["scenarios"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| (s["scenario"].as_str().unwrap().to_string(), s["definition"].clone()))
+        .collect();
+    json!({ "hashes": hashes })
+}
+
 fn requirement_state(overview: &Value) -> &str {
     overview["status"]["requirements"][0]["state"].as_str().unwrap_or("")
 }
@@ -207,7 +218,22 @@ async fn build_verify_annotate_demote_restart() {
     assert_eq!(api.get("/api/overview").await["requirements_approved"], false);
     api.post("/api/targets/approve", json!({ "hash": overview["targets_hash"] })).await;
     api.post("/api/requirements/approve", json!({ "hash": overview["requirements_hash"] })).await;
-    api.post("/api/scenarios/approve-all", json!({})).await;
+    // A scenario is approved at the version shown; a test file edited
+    // after that is not approved by the same click.
+    let shown = shown_scenarios(&overview);
+    let check = fs::read_to_string(root.join("check.sh")).unwrap();
+    fs::write(root.join("check.sh"), format!("{check}# edited\n")).unwrap();
+    let late = api
+        .http
+        .post(format!("{}/api/scenarios/approve-all", api.base))
+        .header("x-aperture-token", &api.token)
+        .json(&shown)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(late.status(), 400);
+    fs::write(root.join("check.sh"), check).unwrap();
+    api.post("/api/scenarios/approve-all", shown).await;
     // The daemon keeps nothing of its own inside the workspace.
     assert!(!root.join(".aperture/local").exists());
 

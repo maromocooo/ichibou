@@ -67,6 +67,9 @@ pub struct ScenarioStatus {
     /// using the approved definition until the user approves the change.
     pub pending_change: bool,
     pub last_result: Option<String>,
+    /// Hash of the definition in the working tree that this status was
+    /// computed from. Sent back when the user approves the scenario.
+    pub definition: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -166,6 +169,7 @@ fn scenario_status(scenario: &Scenario, ev: &Evidence) -> ScenarioStatus {
             state: CriterionState::AwaitingApproval,
             pending_change: false,
             last_result: None,
+            definition: ev.definitions.get(&scenario.id).cloned(),
         };
     };
     let pending_change = ev
@@ -199,6 +203,7 @@ fn scenario_status(scenario: &Scenario, ev: &Evidence) -> ScenarioStatus {
         state,
         pending_change,
         last_result: latest.map(|r| r.id.clone()),
+        definition: ev.definitions.get(&scenario.id).cloned(),
     }
 }
 

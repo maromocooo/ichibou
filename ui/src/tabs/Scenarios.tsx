@@ -27,7 +27,14 @@ export function Scenarios() {
           {t("sc.write")}
         </button>
         {needApproval.length > 0 ? (
-          <button className="primary" onClick={() => act(() => api.approveAllScenarios())}>
+          <button
+            className="primary"
+            onClick={() =>
+              act(() =>
+                api.approveScenarios(Object.fromEntries(needApproval.map((s) => [s.scenario, s.definition ?? ""]))),
+              )
+            }
+          >
             {t("sc.approveAll")} ({needApproval.length})
           </button>
         ) : null}
@@ -51,7 +58,7 @@ export function Scenarios() {
               </span>
               <span className="spacer" />
               {state === "awaiting_approval" ? (
-                <button className="primary" onClick={() => act(() => api.approveScenario(scenario.id))}>
+                <button className="primary" onClick={() => act(() => api.approveScenario(scenario.id, status?.definition ?? ""))}>
                   {t("sc.approve")}
                 </button>
               ) : null}
@@ -60,7 +67,7 @@ export function Scenarios() {
             {status?.pending_change ? (
               <div className="warn row">
                 <span>{t("sc.pending")}</span>
-                <button onClick={() => act(() => api.approveScenario(scenario.id))}>{t("sc.approveChange")}</button>
+                <button onClick={() => act(() => api.approveScenario(scenario.id, status?.definition ?? ""))}>{t("sc.approveChange")}</button>
               </div>
             ) : null}
             <dl className="facts">
