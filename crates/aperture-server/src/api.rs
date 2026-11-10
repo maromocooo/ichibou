@@ -304,6 +304,9 @@ async fn manual(State(engine): State<Arc<Engine>>, Json(body): Json<Manual>) -> 
 #[derive(Deserialize)]
 struct Decision {
     accept: bool,
+    /// Hash of the proposal the UI displayed (from the overview).
+    #[serde(default)]
+    hash: String,
 }
 
 async fn decide_proposal(
@@ -311,7 +314,7 @@ async fn decide_proposal(
     Path(kind): Path<String>,
     Json(body): Json<Decision>,
 ) -> ApiResult {
-    engine.decide_proposal(&kind, body.accept)?;
+    engine.decide_proposal(&kind, body.accept, &body.hash)?;
     ok()
 }
 

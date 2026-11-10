@@ -204,13 +204,15 @@ export function NextStep() {
 
 function Decide({ kind }: { kind: "requirements" | "architecture" | "targets" }) {
   const t = useT();
-  const { act } = useApp();
+  const { act, overview } = useApp();
+  // The hash of the proposal this render is showing.
+  const seen = overview.proposal_hashes[kind] ?? "";
   return (
     <div className="row">
-      <button className="primary" onClick={() => act(() => api.decideProposal(kind, true))}>
+      <button className="primary" onClick={() => act(() => api.decideProposal(kind, true, seen))}>
         {t("proposal.accept")}
       </button>
-      <button onClick={() => act(() => api.decideProposal(kind, false))}>{t("proposal.reject")}</button>
+      <button onClick={() => act(() => api.decideProposal(kind, false, seen))}>{t("proposal.reject")}</button>
     </div>
   );
 }

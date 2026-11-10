@@ -340,10 +340,27 @@ async fn proposals_are_not_applied_until_the_user_accepts() {
     assert!(overview["manifest"]["requirements"]["requirements"].as_array().unwrap().is_empty());
     assert!(!root.join(".aperture/requirements.yaml").exists());
 
-    api.post("/api/proposals/requirements", json!({ "accept": true })).await;
+    // Accepting names the proposal that was shown. If the agent swapped in
+    // another one meanwhile, nothing is applied.
+    let swapped = api
+        .http
+        .post(format!("{}/api/proposals/requirements", api.base))
+        .header("x-aperture-token", &api.token)
+        .json(&json!({ "accept": true, "hash": "0000" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(swapped.status(), 400);
+    assert!(!root.join(".aperture/requirements.yaml").exists());
+    api.post(
+        "/api/proposals/requirements",
+        json!({ "accept": true, "hash": overview["proposal_hashes"]["requirements"] }),
+    )
+    .await;
     api.post("/api/proposals/targets", json!({ "accept": false })).await;
     let overview = api.get("/api/overview").await;
     assert_eq!(overview["manifest"]["requirements"]["requirements"][0]["id"], "REQ-A");
+    assert_eq!(overview["requirements_approved"], true);
     assert!(overview["manifest"]["targets"]["targets"].as_array().unwrap().is_empty());
     assert!(overview["proposals"]["requirements"].is_null());
     assert_eq!(overview["status"]["requirements"][0]["criteria"][0]["state"], "no_scenario");

@@ -223,6 +223,7 @@ export interface Overview {
     architecture: { nodes: ArchNode[]; edges: ArchEdge[] } | null;
     targets: TargetsDoc | null;
   };
+  proposal_hashes: { requirements: string | null; architecture: string | null; targets: string | null };
   approvals: { run: string; id: string; kind: string; detail: string }[];
   verifying: boolean;
   config: Config;
@@ -322,8 +323,9 @@ export const api = {
   verify: () => call("POST", "/verify", {}),
   manual: (requirement: string, check: string, confirmed: boolean) =>
     call("POST", "/manual", { requirement, check, confirmed }),
-  decideProposal: (kind: "requirements" | "architecture" | "targets", accept: boolean) =>
-    call("POST", `/proposals/${kind}`, { accept }),
+  // `hash` is the hash of the proposal that was on screen (from the overview).
+  decideProposal: (kind: "requirements" | "architecture" | "targets", accept: boolean, hash: string) =>
+    call("POST", `/proposals/${kind}`, { accept, hash }),
   // `hash` is the hash of the content that was on screen (from the overview).
   approveTargets: (hash: string) => call("POST", "/targets/approve", { hash }),
   approveRequirements: (hash: string) => call("POST", "/requirements/approve", { hash }),

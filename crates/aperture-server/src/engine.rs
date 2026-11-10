@@ -71,6 +71,13 @@ pub struct Proposals {
     pub targets: Option<TargetsDoc>,
 }
 
+#[derive(Debug, Default, Serialize)]
+pub struct ProposalHashes {
+    pub requirements: Option<String>,
+    pub architecture: Option<String>,
+    pub targets: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Overview {
     pub project_root: String,
@@ -82,6 +89,8 @@ pub struct Overview {
     pub live_runs: Vec<String>,
     pub annotations: Vec<Annotation>,
     pub proposals: Proposals,
+    /// Hash of each pending proposal, sent back when the user decides on it.
+    pub proposal_hashes: ProposalHashes,
     pub approvals: Vec<PendingApproval>,
     pub verifying: bool,
     pub config: Config,
@@ -266,7 +275,10 @@ impl Engine {
     }
 
     pub fn status(&self) -> Result<(Manifest, ProjectStatus)> {
-        let manifest = self.project.load()?;
+        self.status_for(self.project.load()?)
+    }
+
+    fn status_for(&self, manifest: Manifest) -> Result<(Manifest, ProjectStatus)> {
         let current = self.current_snapshot()?;
         let mut definitions = HashMap::new();
         for scenario in &manifest.scenarios.scenarios {
@@ -369,12 +381,32 @@ impl Engine {
     }
 
     pub fn overview(&self) -> Result<Overview> {
-        // Hash before loading: if a file changes in between, the hash is of
-        // the older content and the approval will be refused, never the
-        // other way round.
-        let targets_hash = self.manifest_hash("targets.yaml");
-        let requirements_hash = self.manifest_hash("requirements.yaml");
-        let (manifest, status) = self.status()?;
+        // The two files that need approval are read once each: the bytes
+        // that are hashed are the bytes that are parsed and shown, so the
+        // hash the UI sends back names exactly what the user saw.
+        let read = |file: &str| {
+            std::fs::read(self.project.manifest_dir().join(file)).unwrap_or_default()
+        };
+        let (targets_bytes, requirements_bytes) = (read("targets.yaml"), read("requirements.yaml"));
+        let targets_hash = hash(&targets_bytes);
+        let requirements_hash = hash(&requirements_bytes);
+        let mut manifest = self.project.load()?;
+        manifest.targets = manifest::parse(&targets_bytes)?;
+        manifest.requirements = manifest::parse(&requirements_bytes)?;
+        let (manifest, status) = self.status_for(manifest)?;
+        let stored = |kind: &str| {
+            self.store
+                .kv_get(&format!("proposal:{kind}"))
+                .ok()
+                .flatten()
+                .filter(|text| text != "null")
+        };
+        let proposals = self.proposals();
+        let proposal_hashes = ProposalHashes {
+            requirements: stored("requirements").map(|t| hash(t.as_bytes())),
+            architecture: stored("architecture").map(|t| hash(t.as_bytes())),
+            targets: stored("targets").map(|t| hash(t.as_bytes())),
+        };
         let mut latest: HashMap<String, VerificationResult> = HashMap::new();
         for result in self.store.results()? {
             latest.insert(result.scenario.clone(), result);
@@ -389,7 +421,8 @@ impl Engine {
             runs: self.store.runs()?,
             live_runs: self.live_ids(),
             annotations: self.store.annotations()?,
-            proposals: self.proposals(),
+            proposals,
+            proposal_hashes,
             approvals: lock(&self.approvals).clone(),
             verifying: self.verifying.load(Ordering::SeqCst),
             config: self.config(),
@@ -429,12 +462,19 @@ impl Engine {
 
     /// Accepts or discards a proposal. Accepting targets also approves their
     /// commands, because the user just reviewed them.
-    pub fn decide_proposal(self: &Arc<Self>, kind: &str, accept: bool) -> Result<()> {
+    ///
+    /// `seen` is the hash of the proposal the user was shown. An agent may
+    /// replace its proposal at any moment; accepting applies only to the one
+    /// that was on screen.
+    pub fn decide_proposal(self: &Arc<Self>, kind: &str, accept: bool, seen: &str) -> Result<()> {
         let key = format!("proposal:{kind}");
-        let Some(text) = self.store.kv_get(&key)? else {
+        let Some(text) = self.store.kv_get(&key)?.filter(|text| text != "null") else {
             bail!("there is no pending {kind} proposal");
         };
         if accept {
+            if hash(text.as_bytes()) != seen {
+                bail!("the {kind} proposal changed after it was shown to you; review it again");
+            }
             match kind {
                 "requirements" => {
                     let written = self.project.save_requirements(&serde_json::from_str(&text)?)?;

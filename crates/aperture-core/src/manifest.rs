@@ -142,6 +142,15 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Parses a manifest document from bytes already read (empty means default).
+pub fn parse<T: DeserializeOwned + Default>(bytes: &[u8]) -> Result<T> {
+    let text = std::str::from_utf8(bytes).context("manifest is not UTF-8")?;
+    if text.trim().is_empty() {
+        return Ok(T::default());
+    }
+    serde_yaml::from_str(text).context("invalid manifest")
+}
+
 fn read_yaml<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
     match fs::read_to_string(path) {
         Ok(text) if text.trim().is_empty() => Ok(T::default()),
