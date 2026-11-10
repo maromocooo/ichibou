@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type PreviewInfo, type Rect, api } from "../api";
 import { useApp } from "../app-context";
+import { type Frame, H264Parser } from "../h264";
 import { useT } from "../i18n";
 
 export function Frontend() {
@@ -162,19 +163,23 @@ function DevicePreview({ preview }: { preview: PreviewInfo }) {
   const [picking, setPicking] = useState(false);
   const [drag, setDrag] = useState<{ x: number; y: number; x2: number; y2: number } | null>(null);
   const [text, setText] = useState("");
-  const image = useRef<HTMLImageElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const interactive = preview.kind !== "desktop";
+  // Android can be shown as decoded video when the browser has WebCodecs.
+  const [videoFailed, setVideoFailed] = useState(false);
+  const video = preview.video && !videoFailed && "VideoDecoder" in window;
 
   // Ask for the next screenshot only after the previous one arrived, so a
   // slow device is never flooded.
   const next = () => setTimeout(() => setTick((n) => n + 1), 450);
 
   const position = (event: React.MouseEvent) => {
-    const box = image.current?.getBoundingClientRect();
-    if (!box) return { x: 0, y: 0 };
+    // The frame wraps the picture exactly, whichever element draws it.
+    const rect = box.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
     return {
-      x: Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)),
-      y: Math.min(1, Math.max(0, (event.clientY - box.top) / box.height)),
+      x: Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width)),
+      y: Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height)),
     };
   };
 
@@ -189,12 +194,13 @@ function DevicePreview({ preview }: { preview: PreviewInfo }) {
             ? t("fe.annotate.hint")
             : !interactive
               ? t("fe.desktop.hint")
-              : preview.stream
+              : preview.stream || video
                 ? t("fe.native.live")
                 : t("fe.native.hint")}
         </span>
       </div>
       <div
+        ref={box}
         className={picking ? "device picking" : "device"}
         onMouseDown={(e) => {
           if (!picking) return;
@@ -225,21 +231,24 @@ function DevicePreview({ preview }: { preview: PreviewInfo }) {
           }
         }}
       >
-        <img
-          ref={image}
-          alt={preview.target}
-          draggable={false}
-          // A live stream is one long response; screenshots are polled.
-          src={preview.stream ? api.streamUrl(preview.target) : api.frameUrl(preview.target, tick)}
-          onLoad={() => {
-            setFailed(false);
-            if (!preview.stream) next();
-          }}
-          onError={() => {
-            setFailed(true);
-            setTimeout(() => setTick((n) => n + 1), 2000);
-          }}
-        />
+        {video ? (
+          <LiveVideo target={preview.target} onFail={() => setVideoFailed(true)} />
+        ) : (
+          <img
+            alt={preview.target}
+            draggable={false}
+            // A live stream is one long response; screenshots are polled.
+            src={preview.stream ? api.streamUrl(preview.target) : api.frameUrl(preview.target, tick)}
+            onLoad={() => {
+              setFailed(false);
+              if (!preview.stream) next();
+            }}
+            onError={() => {
+              setFailed(true);
+              setTimeout(() => setTick((n) => n + 1), 2000);
+            }}
+          />
+        )}
         {drag ? (
           <span
             className="region"
@@ -267,6 +276,109 @@ function DevicePreview({ preview }: { preview: PreviewInfo }) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Draws an Android target's H.264 stream on a canvas. Calls `onFail` when
+ * decoding cannot work here, so the caller falls back to screenshots.
+ */
+function LiveVideo({ target, onFail }: { target: string; onFail: () => void }) {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const fail = useRef(onFail);
+  fail.current = onFail;
+
+  useEffect(() => {
+    let closed = false;
+    let socket: WebSocket | null = null;
+    let decoder: VideoDecoder | null = null;
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let errors = 0;
+
+    const connect = () => {
+      const parser = new H264Parser();
+      let configured = "";
+      let timestamp = 0;
+      let waitingForKey = true;
+      decoder = new VideoDecoder({
+        output: (frame) => {
+          const el = canvas.current;
+          if (el) {
+            if (el.width !== frame.displayWidth || el.height !== frame.displayHeight) {
+              el.width = frame.displayWidth;
+              el.height = frame.displayHeight;
+            }
+            el.getContext("2d")?.drawImage(frame, 0, 0);
+          }
+          frame.close();
+          errors = 0;
+        },
+        // A broken picture cannot be repaired mid-stream; a new connection
+        // starts a new recording, which begins with a key frame.
+        error: () => restart(),
+      });
+
+      const decode = (frames: Frame[]) => {
+        for (const frame of frames) {
+          if (!decoder || decoder.state === "closed") return;
+          if (frame.key && frame.codec && frame.codec !== configured) {
+            decoder.configure({ codec: frame.codec, optimizeForLatency: true });
+            configured = frame.codec;
+          }
+          if (waitingForKey && !frame.key) continue;
+          if (!configured) continue;
+          waitingForKey = false;
+          decoder.decode(
+            new EncodedVideoChunk({ type: frame.key ? "key" : "delta", timestamp: timestamp++, data: frame.data }),
+          );
+        }
+      };
+
+      socket = new WebSocket(api.videoUrl(target));
+      socket.binaryType = "arraybuffer";
+      socket.onmessage = (message) => {
+        decode(parser.push(new Uint8Array(message.data as ArrayBuffer)));
+        // The recorder writes only when the screen changes. Once it goes
+        // quiet, what is buffered is a complete picture: show it now.
+        clearTimeout(quiet);
+        quiet = setTimeout(() => decode(parser.flush()), 80);
+      };
+      socket.onclose = () => {
+        if (!closed) restart();
+      };
+    };
+
+    const stop = () => {
+      clearTimeout(quiet);
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (decoder && decoder.state !== "closed") decoder.close();
+      socket = null;
+      decoder = null;
+    };
+
+    const restart = () => {
+      stop();
+      if (closed) return;
+      errors += 1;
+      if (errors > 3) {
+        fail.current();
+        return;
+      }
+      retry = setTimeout(connect, 500);
+    };
+
+    connect();
+    return () => {
+      closed = true;
+      clearTimeout(retry);
+      stop();
+    };
+  }, [target]);
+
+  return <canvas ref={canvas} aria-label={target} />;
 }
 
 function Assets() {

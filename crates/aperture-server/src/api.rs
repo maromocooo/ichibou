@@ -109,6 +109,7 @@ pub fn router(engine: Arc<Engine>) -> Router<Arc<Engine>> {
         .route("/previews/{target}/stop", post(preview_stop))
         .route("/previews/{target}/frame", get(preview_frame))
         .route("/previews/{target}/stream", get(preview_stream))
+        .route("/previews/{target}/video", get(preview_video))
         .route("/previews/{target}/tap", post(preview_tap))
         .route("/previews/{target}/text", post(preview_text))
         .route("/previews/{target}/hierarchy", get(preview_hierarchy))
@@ -590,4 +591,16 @@ async fn approve_requirements(
 
 async fn scenario_files(State(engine): State<Arc<Engine>>, Path(id): Path<String>) -> ApiResult {
     Ok(Json(engine.scenario_files(&id)?))
+}
+
+/// Live H.264 video of an Android target, over a WebSocket.
+async fn preview_video(
+    State(engine): State<Arc<Engine>>,
+    Path(target): Path<String>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    if !engine.previews.is_android(&target).await {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    upgrade.on_upgrade(crate::preview::android_video)
 }

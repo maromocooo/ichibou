@@ -567,7 +567,8 @@ ul.assets {
   cursor: crosshair;
 }
 
-.device img {
+.device img,
+.device canvas {
   max-height: 70vh;
   max-width: 100%;
 }

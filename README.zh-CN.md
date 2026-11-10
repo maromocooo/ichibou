@@ -69,7 +69,7 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 | Claude Code 与 Codex：梳理已有仓库、回答提问标注 | 可用（只读会话：仅有读取类工具和 Aperture 自身的工具） |
 | Web 预览、元素与区域标注 | 可用 |
 | iOS 模拟器预览（轻触需要 `idb`） | 可用；安装 [serve-sim](https://github.com/EvanBacon/serve-sim) 后为实时视频，否则每一两秒刷新一次截图 |
-| Android 模拟器预览（`adb`） | 可用；每隔几秒刷新一次截图 |
+| Android 模拟器预览（`adb`） | 可用；在支持 WebCodecs 的浏览器（Chrome、Edge、较新的 Safari）中为实时视频，否则每隔几秒刷新一次截图 |
 | macOS 窗口预览 | 可用，仅查看（不转发操作）。启动 `aperture` 的应用（终端，或其上常驻的多路复用器）需要屏幕录制权限 |
 | OpenAPI 查看与请求发送、SQLite 表结构 | 可用 |
 | PostgreSQL 表结构 | 可用 |

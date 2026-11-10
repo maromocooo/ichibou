@@ -249,6 +249,7 @@ export interface PreviewInfo {
   url: string | null;
   upstream: string | null;
   stream: boolean;
+  video: boolean;
   log: string;
 }
 
@@ -358,6 +359,8 @@ export const api = {
     call("POST", `/previews/${encodeURIComponent(target)}/text`, { text }),
   frameUrl: (target: string, tick: number) =>
     `/api/previews/${encodeURIComponent(target)}/frame?token=${token}&t=${tick}`,
+  videoUrl: (target: string) =>
+    `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/previews/${encodeURIComponent(target)}/video?token=${token}`,
   streamUrl: (target: string) => `/api/previews/${encodeURIComponent(target)}/stream?token=${token}`,
   fileUrl: (path: string) => `/api/files/${path}?token=${token}`,
   assets: () => call<{ path: string; size: number }[]>("GET", "/assets"),

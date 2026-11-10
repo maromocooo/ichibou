@@ -69,7 +69,7 @@ A scripted stand-in agent builds a small notes app step by step.
 | Claude Code and Codex: describing an existing repository, answering a question annotation | Works (read-only sessions: only reading tools and Aperture's own) |
 | Web preview, element and region annotation | Works |
 | iOS Simulator preview (needs `idb` for taps) | Works; live video with [serve-sim](https://github.com/EvanBacon/serve-sim) installed, screenshots every second or two without it |
-| Android Emulator preview (`adb`) | Works; a screenshot every few seconds |
+| Android Emulator preview (`adb`) | Works; live video in browsers with WebCodecs (Chrome, Edge, recent Safari), screenshots every few seconds otherwise |
 | macOS window preview | Works, view only (no input forwarding). The app that starts `aperture` — the terminal, or a multiplexer daemon it runs under — needs Screen Recording permission |
 | OpenAPI view and request runner, SQLite tables | Works |
 | PostgreSQL tables | Works |

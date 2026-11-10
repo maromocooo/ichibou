@@ -58,6 +58,8 @@ pub struct PreviewInfo {
     pub upstream: Option<String>,
     /// A live video stream is available (otherwise the UI polls screenshots).
     pub stream: bool,
+    /// Live H.264 video is available over the `video` WebSocket (Android).
+    pub video: bool,
     /// Last lines of the app's output, to explain a preview that is down.
     pub log: String,
 }
@@ -109,6 +111,7 @@ impl Previews {
                         url: p.url.clone(),
                         upstream: p.upstream.clone(),
                         stream: p.stream.is_some(),
+                        video: p.kind == TargetKind::Android,
                         log: tail(Path::new(&p.log), 2000),
                     },
                     None => PreviewInfo {
@@ -118,6 +121,7 @@ impl Previews {
                         url: None,
                         upstream: None,
                         stream: false,
+                        video: false,
                         log: tail(&log_path, 2000),
                     },
                 }
@@ -205,6 +209,15 @@ impl Previews {
         self.running.lock().await.insert(name.to_string(), preview);
         engine.notify(UiEvent::Preview);
         Ok(())
+    }
+
+    /// Whether `name` is a running Android preview.
+    pub async fn is_android(&self, name: &str) -> bool {
+        self.running
+            .lock()
+            .await
+            .get(name)
+            .is_some_and(|p| p.kind == TargetKind::Android)
     }
 
     /// URL of the live video stream for a target, when there is one.
@@ -509,6 +522,71 @@ async fn android_pixels() -> Result<(f64, f64)> {
     Ok((w.trim().parse()?, h.trim().parse()?))
 }
 
+/// Size for the video stream: about half the screen, with even sides as
+/// the encoder requires.
+pub fn video_size(width: f64, height: f64) -> (u32, u32) {
+    let scale = (1280.0 / width.max(height)).min(1.0);
+    let even = |v: f64| ((v * scale / 2.0).round() as u32).max(1) * 2;
+    (even(width), even(height))
+}
+
+/// Streams the Android screen to one viewer as raw H.264 (Annex B), using
+/// the device's own screen recorder. The recorder stops after three minutes
+/// at most, so it is restarted for as long as the viewer stays; each restart
+/// begins with a key frame, which is also what a new viewer needs.
+pub async fn android_video(mut socket: WebSocket) {
+    use tokio::io::AsyncReadExt;
+    let (width, height) = match android_pixels().await {
+        Ok((w, h)) => video_size(w, h),
+        Err(_) => return,
+    };
+    loop {
+        let started = tokio::time::Instant::now();
+        let child = Command::new(adb())
+            .args([
+                "exec-out",
+                "screenrecord",
+                "--output-format=h264",
+                "--size",
+                &format!("{width}x{height}"),
+                "--bit-rate",
+                "2500000",
+                "--time-limit",
+                "170",
+                "-",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .spawn();
+        let Ok(mut child) = child else { return };
+        let Some(mut stdout) = child.stdout.take() else { return };
+        let mut buffer = vec![0u8; 64 * 1024];
+        loop {
+            tokio::select! {
+                read = stdout.read(&mut buffer) => match read {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if socket.send(ClientMessage::Binary(buffer[..n].to_vec().into())).await.is_err() {
+                            return;
+                        }
+                    }
+                },
+                incoming = socket.recv() => {
+                    if !matches!(incoming, Some(Ok(_))) {
+                        return;
+                    }
+                }
+            }
+        }
+        // A recorder that dies at once (no device, unsupported) would spin.
+        if started.elapsed() < Duration::from_secs(2) {
+            return;
+        }
+    }
+}
+
 /// Pulls `bounds="[x1,y1][x2,y2]"` nodes out of a uiautomator dump.
 pub fn android_elements(xml: &str, width: f64, height: f64) -> Vec<Value> {
     let attr = |node: &str, name: &str| -> Option<String> {
@@ -798,6 +876,14 @@ mod tests {
             format!("<html><body><p>x</p><script src=\"{OVERLAY_PATH}\"></script></BODY></html>")
         );
         assert!(inject_overlay("<p>fragment</p>").ends_with("</script>"));
+    }
+
+    #[test]
+    fn video_size_is_even_and_bounded() {
+        assert_eq!(video_size(1080.0, 2400.0), (576, 1280));
+        assert_eq!(video_size(720.0, 1280.0), (720, 1280));
+        let (w, h) = video_size(1439.0, 3119.0);
+        assert!(w % 2 == 0 && h % 2 == 0 && h <= 1280);
     }
 
     #[test]
