@@ -69,7 +69,7 @@ A scripted stand-in agent builds a small notes app step by step.
 | Web preview, element and region annotation | Works |
 | iOS Simulator preview (needs `idb` for taps) | Works; live video with [serve-sim](https://github.com/EvanBacon/serve-sim) installed, screenshots every second or two without it |
 | Android Emulator preview (`adb`) | Works; a screenshot every few seconds |
-| macOS window preview | View only; needs Screen Recording permission |
+| macOS window preview | Works, view only (no input forwarding). The app that starts `aperture` — the terminal, or a multiplexer daemon it runs under — needs Screen Recording permission |
 | OpenAPI view and request runner, SQLite tables | Works |
 | PostgreSQL tables | Implemented, not yet tested against a server |
 | Scenario runners: any command that writes JUnit XML | Works |

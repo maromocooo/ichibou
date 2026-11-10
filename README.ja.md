@@ -69,7 +69,7 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 | Web プレビュー、要素・範囲への注釈 | 動作 |
 | iOS Simulator プレビュー（タップには `idb` が必要） | 動作。[serve-sim](https://github.com/EvanBacon/serve-sim) があればライブ映像、なければ 1〜2 秒ごとのスクリーンショット |
 | Android Emulator プレビュー（`adb`） | 動作。数秒ごとのスクリーンショット |
-| macOS ウィンドウのプレビュー | 表示のみ。画面収録の許可が必要 |
+| macOS ウィンドウのプレビュー | 動作。表示のみ（操作の転送なし）。`aperture` を起動するアプリ（ターミナル、またはその下で常駐するマルチプレクサ）に画面収録の許可が必要 |
 | OpenAPI 表示とリクエスト実行、SQLite のテーブル | 動作 |
 | PostgreSQL のテーブル | 実装済み。サーバーに対しては未確認 |
 | シナリオ実行：JUnit XML を出力する任意のコマンド | 動作 |
