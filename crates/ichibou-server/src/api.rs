@@ -379,10 +379,16 @@ async fn file(State(engine): State<Arc<Engine>>, Path(path): Path<String>) -> Re
         Some(full) => full,
         None => return StatusCode::NOT_FOUND.into_response(),
     };
+    // The two directories must be real directories of the state folder. If
+    // one were a link (say `artifacts -> .`), "inside it" would mean inside
+    // wherever it points.
+    let Ok(base) = base.canonicalize() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
     let inside = ["artifacts", "annotations"].iter().any(|dir| {
-        base.join(dir)
-            .canonicalize()
-            .is_ok_and(|allowed| full.starts_with(allowed))
+        let allowed = base.join(dir);
+        std::fs::symlink_metadata(&allowed).is_ok_and(|meta| meta.is_dir())
+            && full.starts_with(&allowed)
     });
     if !inside {
         return StatusCode::NOT_FOUND.into_response();

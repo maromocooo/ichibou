@@ -63,9 +63,21 @@ pub async fn openapi(engine: &Engine, node: &str) -> Result<Value> {
     } else if let Some(command) = &source.openapi_command {
         let out = tokio::time::timeout(
             Duration::from_secs(60),
-            tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(command)
+            // The command is approved, but what it runs may be a script
+            // an agent wrote: like other commands it cannot write to
+            // Ichibou's state.
+            {
+                let mut process = match ichibou_core::sandbox::Guard::state().prefix() {
+                    Some(prefix) => {
+                        let mut process = tokio::process::Command::new(&prefix[0]);
+                        process.args(&prefix[1..]).arg("sh");
+                        process
+                    }
+                    None => tokio::process::Command::new("sh"),
+                };
+                process.arg("-c").arg(command);
+                process
+            }
                 .current_dir(&engine.project.root)
                 .output(),
         )

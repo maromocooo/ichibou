@@ -6,6 +6,8 @@
 
 pub mod manifest;
 pub mod model;
+#[cfg(unix)]
+pub mod safefs;
 pub mod sandbox;
 pub mod snapshot;
 pub mod status;

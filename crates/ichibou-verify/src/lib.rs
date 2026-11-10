@@ -35,6 +35,8 @@ pub struct Verifier {
     /// The targets the user approved. Passed in rather than read from the
     /// workspace, so a file changed after approval is never what runs.
     pub targets: TargetsDoc,
+    /// Hash of that approved file; stamped on every verdict.
+    pub targets_hash: String,
 }
 
 #[derive(Debug)]
@@ -119,12 +121,24 @@ impl Verifier {
         let guard = Guard {
             deny: vec![ichibou_core::manifest::state_base()],
             allow: vec![work.clone(), self.project.local_dir().join("artifacts")],
+            // The approved files and every directory between them and the
+            // copy's root: a guarded process can neither rewrite a test nor
+            // swap a directory above it for something else.
             deny_files: approved
                 .iter()
                 .flat_map(|a| a.frozen.files.keys())
-                .map(|file| work.join(file))
+                .flat_map(|file| {
+                    let mut paths = vec![work.join(file)];
+                    let mut dir = Path::new(file).parent();
+                    while let Some(parent) = dir.filter(|p| !p.as_os_str().is_empty()) {
+                        paths.push(work.join(parent));
+                        dir = parent.parent();
+                    }
+                    paths
+                })
                 .collect(),
         };
+        std::fs::create_dir_all(self.project.local_dir().join("artifacts"))?;
 
         let mut by_target: BTreeMap<String, Vec<&Approved>> = BTreeMap::new();
         for scenario in &approved {
@@ -175,6 +189,7 @@ impl Verifier {
                     outcome: Outcome::Error,
                     snapshot: snapshot.clone(),
                     definition: s.definition.clone(),
+                    targets: self.targets_hash.clone(),
                     at: Utc::now(),
                     detail: detail.clone(),
                     artifacts: None,
@@ -285,6 +300,7 @@ impl Verifier {
                 outcome,
                 snapshot: snapshot.clone(),
                 definition: approved.definition.clone(),
+                targets: self.targets_hash.clone(),
                 at: Utc::now(),
                 detail,
                 artifacts,
@@ -410,82 +426,66 @@ impl Verifier {
         if outcome != Outcome::Passed {
             detail = format!("{detail}\n{}", tail(&log));
         }
+        // Whatever the guard allows on this system, a run only counts if the
+        // approved files are still exactly what was approved afterwards.
+        if let Some(changed) = first_changed_file(work, &approved.frozen) {
+            return finish(
+                id,
+                Outcome::Error,
+                format!("the approved test file `{changed}` was modified during the run, so its result is not trusted\n{detail}"),
+                Some(relative),
+            );
+        }
         finish(id, outcome, detail, Some(relative))
     }
 }
 
-/// Copies the snapshot and checks the copy matches what was hashed. Retries
-/// a few times because an agent may be mid-edit. The returned id covers the
-/// tree and the extra (ignored) files that were copied in.
+/// Copies the workspace and returns the snapshot id of the copy itself:
+/// the tree plus the ignored files copied in, hashed from the copied bytes.
+/// A verdict is therefore tied to exactly what ran, whatever happened to
+/// the workspace meanwhile. If the workspace changed during the copy the
+/// copy is a mix nobody wants verified, so that is retried.
 fn copy_stable(root: &Path, work: &Path, extras: &[String]) -> Result<SnapshotId> {
     for _ in 0..3 {
         if work.exists() {
             std::fs::remove_dir_all(work).context("cannot clear the verification directory")?;
         }
-        let expected = snapshot::take_with(root, extras)?;
-        let tree = snapshot::take(root)?;
-        let copied = snapshot::materialize(root, work, extras)?;
-        if copied == tree && snapshot::take_with(root, extras)? == expected {
-            return Ok(expected);
+        let before = snapshot::take_with(root, extras)?;
+        snapshot::materialize(root, work, extras)?;
+        let copied = snapshot::take_with(work, extras)?;
+        if copied == before && snapshot::take_with(root, extras)? == before {
+            return Ok(copied);
         }
         std::thread::sleep(Duration::from_millis(500));
     }
     bail!(Unstable)
 }
 
-/// Writes (or removes) one file inside the copy without following symbolic
-/// links: the copy reproduces links from the workspace, and a link where a
-/// test file or one of its directories should be would send the write
-/// somewhere else.
-fn write_inside(work: &Path, relative: &str, content: Option<&[u8]>) -> Result<()> {
-    use std::io::Write;
-    if !ichibou_core::manifest::is_safe_relative(relative) {
-        bail!("approved scenario file `{relative}` is not a path inside the project");
-    }
-    let parts: Vec<_> = Path::new(relative)
-        .components()
-        .filter(|c| matches!(c, std::path::Component::Normal(_)))
-        .collect();
-    let Some((name, dirs)) = parts.split_last() else {
-        bail!("approved scenario file has an empty path");
-    };
-    let mut dir = work.to_path_buf();
-    for part in dirs {
-        dir.push(part);
-        match std::fs::symlink_metadata(&dir) {
-            Ok(meta) if meta.is_dir() => {}
-            // A link or file where a directory belongs is replaced.
-            Ok(_) => {
-                std::fs::remove_file(&dir)?;
-                std::fs::create_dir(&dir)?;
-            }
-            Err(_) => std::fs::create_dir(&dir)?,
-        }
-    }
-    let full = dir.join(name);
-    match std::fs::symlink_metadata(&full) {
-        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&full)?,
-        Ok(_) => std::fs::remove_file(&full)?,
-        Err(_) => {}
-    }
-    if let Some(bytes) = content {
-        // `create_new` fails rather than follow anything that appeared here.
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&full)?;
-        file.write_all(bytes)?;
+/// Puts the approved version of each scenario file into the copy, so an
+/// agent's edit to a test cannot change what is being judged. Nothing on
+/// the way is followed if it is a link (the copy reproduces links from the
+/// workspace, and the app under test may be running while this happens).
+fn restore_approved_files(work: &Path, frozen: &FrozenScenario) -> Result<()> {
+    for (path, content) in &frozen.files {
+        let executable = frozen.executable.iter().any(|p| p == path);
+        ichibou_core::safefs::write_under(work, path, content.as_deref(), executable, true)
+            .with_context(|| format!("cannot restore approved scenario file `{path}`"))?;
     }
     Ok(())
 }
 
-/// Puts the approved version of each scenario file into the copy, so an
-/// agent's edit to a test cannot change what is being judged.
-fn restore_approved_files(work: &Path, frozen: &FrozenScenario) -> Result<()> {
-    for (path, content) in &frozen.files {
-        write_inside(work, path, content.as_deref())?;
-    }
-    Ok(())
+/// The first approved file that is no longer a regular file with the
+/// approved content (or that exists although it was approved as absent).
+fn first_changed_file(work: &Path, frozen: &FrozenScenario) -> Option<String> {
+    frozen.files.iter().find_map(|(path, content)| {
+        let full = work.join(path);
+        let on_disk = match std::fs::symlink_metadata(&full) {
+            Ok(meta) if meta.is_file() => std::fs::read(&full).ok(),
+            Ok(_) => return Some(path.clone()),
+            Err(_) => None,
+        };
+        (on_disk.as_deref() != content.as_deref()).then(|| path.clone())
+    })
 }
 
 /// Reads the scenario's current files once and returns the approval record
@@ -498,11 +498,22 @@ pub fn freeze(project: &Project, scenario: &Scenario) -> Result<(ScenarioApprova
         definition: ichibou_core::manifest::definition_of(scenario, &files)?,
         at: Utc::now(),
     };
+    let executable = files
+        .keys()
+        .filter(|file| {
+            use std::os::unix::fs::PermissionsExt;
+            ichibou_core::manifest::resolve_inside(&project.root, file)
+                .and_then(|path| std::fs::metadata(path).ok())
+                .is_some_and(|meta| meta.permissions().mode() & 0o111 != 0)
+        })
+        .cloned()
+        .collect();
     Ok((
         approval,
         FrozenScenario {
             scenario: scenario.clone(),
             files,
+            executable,
         },
     ))
 }

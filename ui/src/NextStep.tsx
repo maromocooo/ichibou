@@ -21,7 +21,7 @@ function commands(targets: TargetsDoc): string[] {
     if (target.verify?.start) launch(target.name, "verify start", target.verify.start);
     for (const file of target.verify?.copy ?? []) list.push(`${target.name} · copies ignored file: ${file}`);
     for (const dir of target.verify?.link ?? []) list.push(`${target.name} · links directory: ${dir}`);
-    if (target.guard === false) list.push(`${target.name} · runs WITHOUT the write guard that protects Ichibou's state`);
+    if (target.guard === false) list.push(`${target.name} · runs WITHOUT the write guard: its commands could change Ichibou's approvals and results, for any project`);
     if (target.app_id) list.push(`${target.name} · ${target.kind} app shown: ${target.app_id}`);
   }
   for (const source of targets.apis) {

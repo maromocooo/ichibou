@@ -67,6 +67,9 @@ pub struct FrozenScenario {
     pub scenario: Scenario,
     /// Relative path -> file content. `None` for a file that did not exist.
     pub files: HashMap<String, Option<Vec<u8>>>,
+    /// Files that had the executable bit when approved.
+    #[serde(default)]
+    pub executable: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -489,6 +492,7 @@ mod tests {
                     outcome: Outcome::Passed,
                     snapshot: SnapshotId("x".into()),
                     definition: "d".into(),
+                    targets: String::new(),
                     at: Utc::now() + chrono::Duration::seconds(i),
                     detail: String::new(),
                     artifacts: Some(format!("art{i}")),

@@ -71,20 +71,6 @@ impl Project {
         self.manifest_dir().join(name)
     }
 
-    /// Refuses to write when the manifest directory (or its `scenarios`
-    /// subdirectory) is a symbolic link: the write would land wherever the
-    /// link points, outside the project.
-    fn check_writable(&self) -> Result<()> {
-        for dir in [self.manifest_dir(), self.manifest_dir().join("scenarios")] {
-            if let Ok(meta) = fs::symlink_metadata(&dir) {
-                if !meta.is_dir() {
-                    bail!("{} is not a real directory; refusing to write through it", dir.display());
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// Creates the manifest directory and this project's state directory.
     pub fn init(&self) -> Result<()> {
         fs::create_dir_all(self.manifest_dir())?;
@@ -104,21 +90,18 @@ impl Project {
     /// Returns the text that was written, so callers can bind an approval
     /// to exactly these bytes.
     pub fn save_requirements(&self, doc: &RequirementsDoc) -> Result<String> {
-        self.check_writable()?;
         validate_requirements(doc)?;
-        write_yaml(&self.file("requirements.yaml"), doc)
+        write_yaml(&self.root, ".ichibou/requirements.yaml", doc)
     }
 
     pub fn save_architecture(&self, doc: &ArchitectureDoc) -> Result<()> {
-        self.check_writable()?;
         validate_architecture(doc)?;
-        write_yaml(&self.file("architecture.yaml"), doc).map(|_| ())
+        write_yaml(&self.root, ".ichibou/architecture.yaml", doc).map(|_| ())
     }
 
     /// Returns the text that was written, so callers can bind an approval
     /// to exactly these bytes.
     pub fn save_targets(&self, doc: &TargetsDoc) -> Result<String> {
-        self.check_writable()?;
         for target in &doc.targets {
             let launches = [
                 target.dev.as_ref(),
@@ -136,11 +119,10 @@ impl Project {
                 }
             }
         }
-        write_yaml(&self.file("targets.yaml"), doc)
+        write_yaml(&self.root, ".ichibou/targets.yaml", doc)
     }
 
     pub fn save_scenarios(&self, doc: &ScenariosDoc) -> Result<()> {
-        self.check_writable()?;
         for scenario in &doc.scenarios {
             for file in &scenario.files {
                 if !is_safe_relative(file) {
@@ -148,7 +130,7 @@ impl Project {
                 }
             }
         }
-        write_yaml(&self.file("scenarios/index.yaml"), doc).map(|_| ())
+        write_yaml(&self.root, ".ichibou/scenarios/index.yaml", doc).map(|_| ())
     }
 
     /// Hash of everything that defines what a scenario checks: its manifest
@@ -271,39 +253,14 @@ fn read_yaml<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
     }
 }
 
-/// Writes a manifest file without following symbolic links. The manifest
-/// directory is in the workspace, so an agent could have replaced the
-/// directory, the file's temporary sibling, or anything on the way with a
-/// link to somewhere else.
-fn write_yaml<T: Serialize>(path: &Path, value: &T) -> Result<String> {
-    let parent = path.parent().context("manifest file has no directory")?;
-    fs::create_dir_all(parent)?;
+/// Writes a manifest file below the project root without following
+/// symbolic links: the manifest directory is in the workspace, where an
+/// agent could have replaced it, or anything in it, with a link to somewhere
+/// else. Returns the text written.
+fn write_yaml<T: Serialize>(root: &Path, relative: &str, value: &T) -> Result<String> {
     let text = serde_yaml::to_string(value)?;
-    // A new, uniquely named sibling: `create_new` refuses an existing entry
-    // (including a link), and the rename replaces the destination itself,
-    // never what a link there points at.
-    let unique = format!(
-        ".{}.{}.{}.tmp",
-        path.file_name().unwrap_or_default().to_string_lossy(),
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0)
-    );
-    let tmp = parent.join(unique);
-    let written = (|| -> Result<()> {
-        use std::io::Write;
-        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-        file.write_all(text.as_bytes())?;
-        file.sync_all()?;
-        fs::rename(&tmp, path)?;
-        Ok(())
-    })();
-    if written.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    written?;
+    crate::safefs::write_under(root, relative, Some(text.as_bytes()), false, false)
+        .with_context(|| format!("cannot write {relative}"))?;
     Ok(text)
 }
 

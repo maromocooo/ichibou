@@ -160,6 +160,10 @@ pub struct Evidence<'a> {
     /// edit: otherwise adding a requirement to a passing scenario's `covers`
     /// would mark that requirement as verified.
     pub approved: &'a HashMap<String, Scenario>,
+    /// Hash of the targets file the user currently approves, if any. Only
+    /// verdicts produced with exactly that file count: a run under other
+    /// commands says nothing about these.
+    pub targets: Option<&'a str>,
     pub confirmations: &'a [ManualConfirmation],
     /// Claims of runs that are still alive.
     pub claims: &'a [Claim],
@@ -185,7 +189,11 @@ fn scenario_status(scenario: &Scenario, ev: &Evidence) -> ScenarioStatus {
     let latest = ev
         .results
         .iter()
-        .filter(|r| r.scenario == scenario.id && r.definition == approval.definition)
+        .filter(|r| {
+            r.scenario == scenario.id
+                && r.definition == approval.definition
+                && ev.targets == Some(r.targets.as_str())
+        })
         .max_by_key(|r| r.at);
     let state = match latest {
         None => CriterionState::NotRun,
@@ -531,6 +539,7 @@ mod tests {
         approvals: Vec<ScenarioApproval>,
         definitions: HashMap<String, String>,
         approved: HashMap<String, Scenario>,
+        targets: Option<String>,
         confirmations: Vec<ManualConfirmation>,
         claims: Vec<Claim>,
         annotations: Vec<Annotation>,
@@ -552,6 +561,7 @@ mod tests {
                 approvals,
                 definitions: HashMap::new(),
                 approved: HashMap::new(),
+                targets: Some("t1".into()),
                 confirmations: vec![],
                 claims: vec![],
                 annotations: vec![],
@@ -566,6 +576,7 @@ mod tests {
                 outcome,
                 snapshot: SnapshotId(snapshot.into()),
                 definition: definition.into(),
+                targets: "t1".into(),
                 at,
                 detail: String::new(),
                 artifacts: None,
@@ -579,6 +590,7 @@ mod tests {
                 approvals: &self.approvals,
                 definitions: &self.definitions,
                 approved: &self.approved,
+                targets: self.targets.as_deref(),
                 confirmations: &self.confirmations,
                 claims: &self.claims,
                 annotations: &self.annotations,
@@ -692,6 +704,20 @@ mod tests {
             s.requirements[2].criteria[0].state,
             CriterionState::NoScenario
         );
+    }
+
+    #[test]
+    fn a_pass_only_counts_under_the_targets_it_ran_with() {
+        let m = manifest();
+        let mut w = World::new();
+        w.result("sa", Outcome::Passed, "s1", "d1");
+        assert_eq!(state(&w.status(&m), "A"), RequirementState::Done);
+        // The targets file changed and was approved again: other commands.
+        w.targets = Some("t2".into());
+        assert_ne!(state(&w.status(&m), "A"), RequirementState::Done);
+        // Nothing approved at all: nothing counts.
+        w.targets = None;
+        assert_ne!(state(&w.status(&m), "A"), RequirementState::Done);
     }
 
     #[test]

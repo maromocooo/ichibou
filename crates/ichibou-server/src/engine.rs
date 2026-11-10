@@ -306,12 +306,15 @@ impl Engine {
             .into_iter()
             .map(|f| (f.scenario.id.clone(), f.scenario))
             .collect();
+        // Verdicts count only for the targets file approved right now.
+        let targets_hash = self.approved_targets_with_hash().ok().map(|(_, h)| h);
         let evidence = Evidence {
             current: &current,
             results: &results,
             approvals: &approvals,
             definitions: &definitions,
             approved: &approved,
+            targets: targets_hash.as_deref(),
             confirmations: &confirmations,
             claims: &claims,
             annotations: &annotations,
@@ -335,11 +338,17 @@ impl Engine {
     /// runs a command, opens a URL or connects to a database goes through
     /// here.
     pub fn approved_targets(&self) -> Result<TargetsDoc> {
+        self.approved_targets_with_hash().map(|(targets, _)| targets)
+    }
+
+    /// The approved targets and the hash they were approved under.
+    pub fn approved_targets_with_hash(&self) -> Result<(TargetsDoc, String)> {
         let bytes = std::fs::read(self.project.manifest_dir().join("targets.yaml")).unwrap_or_default();
-        if self.store.kv_get("targets_approved")? != Some(hash(&bytes)) {
+        let digest = hash(&bytes);
+        if self.store.kv_get("targets_approved")? != Some(digest.clone()) {
             bail!("approve targets.yaml first: its commands and addresses have changed since you last reviewed them");
         }
-        manifest::parse(&bytes)
+        Ok((manifest::parse(&bytes)?, digest))
     }
 
     /// Ignored files that verification copies in; they count as part of the
@@ -385,6 +394,9 @@ impl Engine {
             bail!("{file} changed after it was shown to you; review it again");
         }
         self.store.kv_set(key, seen)?;
+        // The approved targets decide which ignored files are part of the
+        // snapshot, so the cached id may no longer be right.
+        *lock(&self.snapshot) = None;
         self.notify(UiEvent::Status);
         Ok(())
     }
@@ -401,6 +413,7 @@ impl Engine {
     /// behalf, hashed from the written bytes rather than re-read from disk.
     pub fn approve_written(&self, key: &str, written: &str) -> Result<()> {
         self.store.kv_set(key, &hash(written.as_bytes()))?;
+        *lock(&self.snapshot) = None;
         self.notify(UiEvent::Status);
         Ok(())
     }
@@ -629,11 +642,15 @@ impl Engine {
             return;
         };
         let results = self.store.results().unwrap_or_default();
+        let targets_hash = self.approved_targets_with_hash().ok().map(|(_, h)| h);
         // Stale when any approved scenario lacks a verdict for the current
         // snapshot and its approved definition.
         let stale = self.store.approvals().unwrap_or_default().iter().any(|a| {
             !results.iter().any(|r| {
-                r.scenario == a.scenario && r.definition == a.definition && r.snapshot == current
+                r.scenario == a.scenario
+                    && r.definition == a.definition
+                    && r.snapshot == current
+                    && Some(&r.targets) == targets_hash.as_ref()
             })
         });
         if stale {
@@ -669,7 +686,7 @@ impl Engine {
         for attempt in 0..5 {
             // Checked on every attempt, not once: the file may change while
             // waiting for the workspace to settle.
-            let Ok(targets) = self.approved_targets() else {
+            let Ok((targets, targets_hash)) = self.approved_targets_with_hash() else {
                 let _ = self.store.append_event(
                     None,
                     "verify_blocked",
@@ -681,6 +698,7 @@ impl Engine {
                 project: self.project.clone(),
                 store: self.store.clone(),
                 targets,
+                targets_hash,
             };
             match verifier.run(None).await {
                 Ok(report) => {

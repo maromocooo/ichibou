@@ -110,6 +110,7 @@ fn state(f: &Fixture) -> RequirementState {
         approvals: &f.store.approvals().unwrap(),
         definitions: &definitions,
         approved: &HashMap::new(),
+        targets: Some("t1"),
         confirmations: &[],
         claims: &[],
         annotations: &[],
@@ -122,6 +123,7 @@ fn verifier(f: &Fixture) -> Verifier {
         project: f.project.clone(),
         store: f.store.clone(),
         targets: f.project.load().unwrap().targets,
+        targets_hash: "t1".into(),
     }
 }
 
@@ -327,4 +329,45 @@ async fn a_self_sandboxing_tool_gets_a_hint_and_can_opt_out() {
     f.project.save_targets(&targets).unwrap();
     let open = verifier(&f).run(None).await.unwrap();
     assert_eq!(open.results[0].outcome, Outcome::Passed, "{}", open.results[0].detail);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn an_approved_executable_test_is_still_executable_when_restored() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fixture();
+    let script = f.project.root.join("check.sh");
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut scenario = f.scenario.clone();
+    // Run it directly rather than through `sh`: needs the executable bit.
+    scenario.command = Some("./check.sh {report}".into());
+    f.project
+        .save_scenarios(&ScenariosDoc { scenarios: vec![scenario.clone()] })
+        .unwrap();
+    let (approval, frozen) = freeze(&f.project, &scenario).unwrap();
+    assert_eq!(frozen.executable, vec!["check.sh".to_string()]);
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+    let report = verifier(&f).run(None).await.unwrap();
+    assert_eq!(report.results[0].outcome, Outcome::Passed, "{}", report.results[0].detail);
+    assert_eq!(report.results[0].targets, "t1");
+}
+
+#[tokio::test]
+async fn a_test_file_changed_during_the_run_voids_the_result() {
+    let f = fixture();
+    // No guard on this target, so the command is able to rewrite the test;
+    // the result must still not be trusted.
+    let mut targets = f.project.load().unwrap().targets;
+    targets.targets[0].guard = false;
+    f.project.save_targets(&targets).unwrap();
+    let mut scenario = f.scenario.clone();
+    scenario.command = Some("sh check.sh {report} && echo '# tampered' >> check.sh".into());
+    f.project
+        .save_scenarios(&ScenariosDoc { scenarios: vec![scenario.clone()] })
+        .unwrap();
+    let (approval, frozen) = freeze(&f.project, &scenario).unwrap();
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+    let report = verifier(&f).run(None).await.unwrap();
+    assert_eq!(report.results[0].outcome, Outcome::Error);
+    assert!(report.results[0].detail.contains("modified during the run"), "{}", report.results[0].detail);
 }

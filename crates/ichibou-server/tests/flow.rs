@@ -299,6 +299,19 @@ async fn build_verify_annotate_demote_restart() {
         .await;
     assert_eq!(overview["manifest"]["targets"]["targets"][1]["name"], "phone");
 
+    // A pass was earned under the approved commands. If targets.yaml
+    // changes, the old verdict stops counting even before anything reruns:
+    // unapproved, nothing counts; approved again, it is verified afresh.
+    let targets_file = root.join(".ichibou/targets.yaml");
+    let approved_text = fs::read_to_string(&targets_file).unwrap();
+    fs::write(&targets_file, format!("{approved_text}# edited by someone\n")).unwrap();
+    let overview = api
+        .until("unapproved targets void the pass", |o| o["targets_approved"] == false && requirement_state(o) != "done")
+        .await;
+    assert_eq!(overview["status"]["complete"], false);
+    fs::write(&targets_file, approved_text).unwrap();
+    api.until("pass counts again under the approved targets", |o| requirement_state(o) == "done").await;
+
     // Editing the code by hand demotes the pass; re-verification then fails.
     fs::write(root.join("answer.txt"), "41\n").unwrap();
     api.until("failing after edit", |o| requirement_state(o) == "failing").await;
@@ -522,6 +535,16 @@ async fn served_files_and_the_preview_proxy_refuse_what_is_not_theirs() {
     assert!(local.join("state.db").exists());
     for path in ["artifacts/../state.db", "artifacts/run/../../state.db", "state.db", "artifacts/%2e%2e/state.db"] {
         assert_eq!(status(format!("/api/files/{path}")).await, 404, "{path}");
+    }
+
+    // If the artifacts directory itself were a link to the state folder,
+    // "inside artifacts" must not start meaning "inside the state folder".
+    #[cfg(unix)]
+    {
+        fs::remove_dir_all(local.join("artifacts")).unwrap();
+        std::os::unix::fs::symlink(".", local.join("artifacts")).unwrap();
+        assert_eq!(status("/api/files/artifacts/state.db".into()).await, 404);
+        fs::remove_file(local.join("artifacts")).unwrap();
     }
 
     // The preview does not start before the commands are approved.

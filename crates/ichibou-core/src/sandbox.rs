@@ -61,7 +61,25 @@ impl Guard {
         };
         profile.push_str(&rule("deny", "subpath", &self.deny));
         profile.push_str(&rule("allow", "subpath", &self.allow));
-        profile.push_str(&rule("deny", "literal", &self.deny_files));
+        // Rules match paths. Renaming a directory above a protected one
+        // would move it out from under its rule, so the directories above
+        // each denied directory, and the allowed directories themselves,
+        // may not be renamed, removed or replaced either. A `literal` rule
+        // covers the entry itself, not what is created inside it.
+        let mut entries: Vec<PathBuf> = self.deny_files.clone();
+        for dir in &self.deny {
+            let mut above = real(dir);
+            while above.pop() {
+                if above.as_os_str().is_empty() || above == Path::new("/") {
+                    break;
+                }
+                entries.push(above.clone());
+            }
+        }
+        entries.extend(self.allow.iter().cloned());
+        entries.sort();
+        entries.dedup();
+        profile.push_str(&rule("deny", "literal", &entries));
         profile
     }
 
@@ -88,13 +106,16 @@ mod tests {
             allow: vec!["/state/p/verify".into()],
             deny_files: vec!["/state/p/verify/e2e/a \"b\".spec.js".into()],
         };
-        assert_eq!(
-            guard.profile(),
+        let profile = guard.profile();
+        assert!(profile.starts_with(
             "(version 1)(allow default)\
              (deny file-write* (subpath \"/state\"))\
              (allow file-write* (subpath \"/state/p/verify\"))\
-             (deny file-write* (literal \"/state/p/verify/e2e/a \\\"b\\\".spec.js\"))"
-        );
+             (deny file-write* "
+        ));
+        // The approved file (quotes escaped) and the allowed root itself.
+        assert!(profile.contains("(literal \"/state/p/verify/e2e/a \\\"b\\\".spec.js\")"));
+        assert!(profile.contains("(literal \"/state/p/verify\")"));
         assert!(Guard::default().prefix().is_none());
     }
 
@@ -109,7 +130,7 @@ mod tests {
         let guard = Guard {
             deny: vec![state.clone()],
             allow: vec![work.clone()],
-            deny_files: vec![work.join("e2e/approved.spec.js")],
+            deny_files: vec![work.join("e2e/approved.spec.js"), work.join("e2e")],
         };
         let prefix = guard.prefix().expect("sandbox-exec is part of macOS");
         let run = |script: &str| {
@@ -127,6 +148,15 @@ mod tests {
         assert!(run("echo built > state/verify/out.txt"));
         assert!(!run("echo weakened > state/verify/e2e/approved.spec.js"));
         assert!(run("echo ok > elsewhere.txt"));
+        // New files next to an approved one are fine...
+        assert!(run("echo helper > state/verify/e2e/helper.js"));
+        // ...but nothing above a protected path can be moved aside to get
+        // around its rule: not the test's directory, the copy, or the state
+        // directory's own parent.
+        assert!(!run("mv state/verify/e2e state/verify/e2e-moved"));
+        assert!(!run("mv state/verify state/verify-moved"));
+        assert!(!run("mv state state-moved"));
+        assert!(!run(&format!("mv '{}' '{}-moved'", dir.display(), dir.display())));
         assert_eq!(
             std::fs::read_to_string(work.join("e2e/approved.spec.js")).unwrap(),
             "approved"

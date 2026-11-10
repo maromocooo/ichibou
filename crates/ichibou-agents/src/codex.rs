@@ -100,6 +100,9 @@ pub async fn start(spec: SessionSpec) -> Result<Session> {
     })
 }
 
+/// Largest approval request shown to the user; larger ones are declined.
+const MAX_APPROVAL_DETAIL: usize = 64 * 1024;
+
 enum Pending {
     Initialize,
     Thread,
@@ -355,12 +358,11 @@ impl Protocol {
             }
         }
         let mut elicitation = false;
-        // The user decides on what is shown, so show the request itself:
-        // long enough for a whole command line or change list.
+        // The user decides on what is shown, so the request is shown whole.
         let approval = |kind: &str, detail: String| AgentEvent::ApprovalRequest {
             id: id.to_string(),
             kind: kind.to_string(),
-            detail: truncate(&detail, 8000),
+            detail,
         };
         // Everything Codex sent about a request, for kinds without one
         // obvious field to show.
@@ -422,6 +424,24 @@ impl Protocol {
                 );
             }
         };
+        // A request too large to read is not something a person can
+        // approve; it is declined rather than shown cut off.
+        if let AgentEvent::ApprovalRequest { detail, kind, .. } = &event {
+            if detail.len() > MAX_APPROVAL_DETAIL {
+                let result = if elicitation {
+                    json!({ "action": "decline", "content": {} })
+                } else {
+                    json!({ "decision": "decline" })
+                };
+                let note = AgentEvent::Error {
+                    message: format!(
+                        "declined a {kind} approval request of {} bytes: too large to review",
+                        detail.len()
+                    ),
+                };
+                return (vec![note], vec![json!({ "id": id, "result": result })]);
+            }
+        }
         self.approvals.insert(id.to_string(), (id, elicitation));
         (
             vec![
@@ -666,6 +686,12 @@ mod tests {
         let AgentEvent::ApprovalRequest { detail, .. } = &events[0] else { panic!() };
         assert!(detail.ends_with("&& rm -rf build\nin /work/app"), "{detail}");
         p.command(Command::Approve { id: "70".into(), allow: false });
+        // One too large to read is declined on the spot, never shown cut off.
+        let huge = "x".repeat(MAX_APPROVAL_DETAIL + 1);
+        let (events, replies) = p.incoming(json!({ "id": 71, "method": "item/commandExecution/requestApproval",
+            "params": { "command": huge } }));
+        assert!(matches!(&events[0], AgentEvent::Error { .. }));
+        assert_eq!(replies[0], json!({ "id": 71, "result": { "decision": "decline" } }));
         let out = p.command(Command::Approve { id: id.clone(), allow: true });
         assert_eq!(out[0], json!({ "id": 7, "result": { "decision": "accept" } }));
 

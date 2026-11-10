@@ -260,6 +260,10 @@ pub struct VerificationResult {
     pub snapshot: SnapshotId,
     /// Hash of the scenario definition that was executed.
     pub definition: String,
+    /// Hash of the approved targets file the run used (commands, addresses,
+    /// environment). A verdict only counts while that same file is approved.
+    #[serde(default)]
+    pub targets: String,
     pub at: DateTime<Utc>,
     #[serde(default)]
     pub detail: String,
