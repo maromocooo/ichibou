@@ -31,7 +31,14 @@ Ichibou 绝不会在绕过权限检查的情况下启动智能体。会写入文
 
 ## 安装
 
-环境要求：macOS、Rust 1.89+、Node.js 22+，以及已登录的 [Claude Code](https://claude.com/claude-code) 或 [Codex CLI](https://developers.openai.com/codex)（至少其一）。
+使用 Homebrew（Apple 芯片的 macOS）：
+
+```sh
+brew install maromocooo/ichibou/ichibou
+ichibou doctor
+```
+
+或者从源码构建。环境要求：macOS、Rust 1.89+、Node.js 22+，以及已登录的 [Claude Code](https://claude.com/claude-code) 或 [Codex CLI](https://developers.openai.com/codex)（至少其一）。
 
 ```sh
 git clone https://github.com/maromocooo/ichibou.git && cd ichibou

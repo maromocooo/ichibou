@@ -31,7 +31,14 @@ Ichibou は、権限チェックを無効にした状態でエージェントを
 
 ## インストール
 
-必要なもの：macOS、Rust 1.89 以上、Node.js 22 以上、サインイン済みの [Claude Code](https://claude.com/claude-code) または [Codex CLI](https://developers.openai.com/codex)（どちらか一方で可）。
+Homebrew の場合（Apple シリコンの macOS）：
+
+```sh
+brew install maromocooo/ichibou/ichibou
+ichibou doctor
+```
+
+ソースからビルドする場合に必要なもの：macOS、Rust 1.89 以上、Node.js 22 以上、サインイン済みの [Claude Code](https://claude.com/claude-code) または [Codex CLI](https://developers.openai.com/codex)（どちらか一方で可）。
 
 ```sh
 git clone https://github.com/maromocooo/ichibou.git && cd ichibou
