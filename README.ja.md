@@ -34,7 +34,7 @@ Ichibou は、権限チェックを無効にした状態でエージェントを
 必要なもの：macOS、Rust 1.89 以上、Node.js 22 以上、サインイン済みの [Claude Code](https://claude.com/claude-code) または [Codex CLI](https://developers.openai.com/codex)（どちらか一方で可）。
 
 ```sh
-git clone <このリポジトリ> ichibou && cd ichibou
+git clone https://github.com/maromocooo/ichibou.git && cd ichibou
 npm --prefix ui install && npm --prefix ui run build
 cargo install --path crates/ichibou-cli
 ichibou doctor

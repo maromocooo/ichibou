@@ -34,7 +34,7 @@ Ichibou never starts an agent with permission checks bypassed. Claude sessions t
 Requirements: macOS, Rust 1.89+, Node.js 22+, and at least one of [Claude Code](https://claude.com/claude-code) or the [Codex CLI](https://developers.openai.com/codex), signed in.
 
 ```sh
-git clone <this repository> ichibou && cd ichibou
+git clone https://github.com/maromocooo/ichibou.git && cd ichibou
 npm --prefix ui install && npm --prefix ui run build
 cargo install --path crates/ichibou-cli
 ichibou doctor

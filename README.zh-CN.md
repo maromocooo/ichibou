@@ -34,7 +34,7 @@ Ichibou 绝不会在绕过权限检查的情况下启动智能体。会写入文
 环境要求：macOS、Rust 1.89+、Node.js 22+，以及已登录的 [Claude Code](https://claude.com/claude-code) 或 [Codex CLI](https://developers.openai.com/codex)（至少其一）。
 
 ```sh
-git clone <本仓库> ichibou && cd ichibou
+git clone https://github.com/maromocooo/ichibou.git && cd ichibou
 npm --prefix ui install && npm --prefix ui run build
 cargo install --path crates/ichibou-cli
 ichibou doctor
