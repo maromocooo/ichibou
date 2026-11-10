@@ -131,12 +131,18 @@ pub fn hash_listed(root: &Path, list: &[PathBuf], extra: &[String]) -> Result<Sn
         hasher.update(name.as_bytes());
         hasher.update([0]);
         // Same rule as when copying: only files inside the project count.
-        match crate::manifest::resolve_inside(root, name).and_then(|p| fs::read(p).ok()) {
-            Some(bytes) => {
-                hasher.update([1]);
+        // Like tracked files, an extra file is its content and whether it
+        // can be executed.
+        let file = crate::manifest::resolve_inside(root, name).and_then(|path| {
+            let meta = fs::metadata(&path).ok()?;
+            Some((fs::read(&path).ok()?, is_executable(&meta)))
+        });
+        match file {
+            Some((bytes, executable)) => {
+                hasher.update(if executable { b"x" } else { b"f" });
                 hasher.update(&bytes);
             }
-            None => hasher.update([0]),
+            None => hasher.update(b"-"),
         }
     }
     Ok(SnapshotId(hex(&hasher.finalize())))

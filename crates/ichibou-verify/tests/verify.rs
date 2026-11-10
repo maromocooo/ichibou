@@ -303,6 +303,19 @@ async fn copied_inputs_are_part_of_the_snapshot() {
     fs::write(f.project.root.join(".env.test"), "MODE=b\n").unwrap();
     let second = verifier(&f).run(None).await.unwrap().snapshot;
     assert_ne!(first, second);
+    // So does changing only whether it can be executed, and the copy keeps
+    // the mode it was given.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let path = f.project.root.join(".env.test");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        let third = verifier(&f).run(None).await.unwrap().snapshot;
+        assert_ne!(second, third);
+        assert_eq!(third, snapshot::take_with(&f.project.root, &[".env.test".into()]).unwrap());
+        let copied = f.project.local_dir().join("verify/.env.test");
+        assert_ne!(fs::metadata(copied).unwrap().permissions().mode() & 0o111, 0);
+    }
 }
 
 #[cfg(target_os = "macos")]
