@@ -87,22 +87,26 @@ impl Project {
         })
     }
 
-    pub fn save_requirements(&self, doc: &RequirementsDoc) -> Result<()> {
+    /// Returns the text that was written, so callers can bind an approval
+    /// to exactly these bytes.
+    pub fn save_requirements(&self, doc: &RequirementsDoc) -> Result<String> {
         validate_requirements(doc)?;
         write_yaml(&self.file("requirements.yaml"), doc)
     }
 
     pub fn save_architecture(&self, doc: &ArchitectureDoc) -> Result<()> {
         validate_architecture(doc)?;
-        write_yaml(&self.file("architecture.yaml"), doc)
+        write_yaml(&self.file("architecture.yaml"), doc).map(|_| ())
     }
 
-    pub fn save_targets(&self, doc: &TargetsDoc) -> Result<()> {
+    /// Returns the text that was written, so callers can bind an approval
+    /// to exactly these bytes.
+    pub fn save_targets(&self, doc: &TargetsDoc) -> Result<String> {
         write_yaml(&self.file("targets.yaml"), doc)
     }
 
     pub fn save_scenarios(&self, doc: &ScenariosDoc) -> Result<()> {
-        write_yaml(&self.file("scenarios/index.yaml"), doc)
+        write_yaml(&self.file("scenarios/index.yaml"), doc).map(|_| ())
     }
 
     /// Hash of everything that defines what a scenario checks: its manifest
@@ -149,16 +153,16 @@ fn read_yaml<T: DeserializeOwned + Default>(path: &Path) -> Result<T> {
     }
 }
 
-fn write_yaml<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+fn write_yaml<T: Serialize>(path: &Path, value: &T) -> Result<String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     let text = serde_yaml::to_string(value)?;
     // Write to a sibling and rename so a crash never leaves a half-written manifest.
     let tmp = path.with_extension("yaml.tmp");
-    fs::write(&tmp, text)?;
+    fs::write(&tmp, &text)?;
     fs::rename(&tmp, path)?;
-    Ok(())
+    Ok(text)
 }
 
 pub fn validate_requirements(doc: &RequirementsDoc) -> Result<()> {

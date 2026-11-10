@@ -89,6 +89,10 @@ pub struct Overview {
     pub targets_approved: bool,
     /// Whether requirements.yaml is the version the user approved.
     pub requirements_approved: bool,
+    /// Hashes of the manifest files this overview was built from. The UI
+    /// sends them back when the user approves what it displayed.
+    pub targets_hash: String,
+    pub requirements_hash: String,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -139,6 +143,13 @@ pub struct Engine {
     /// Snapshot of the last completed verification run.
     last_verified: Mutex<Option<SnapshotId>>,
     pub previews: crate::preview::Previews,
+}
+
+fn hash(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -308,16 +319,17 @@ impl Engine {
         }
     }
 
-    fn manifest_hash(&self, file: &str) -> String {
+    /// Hash of a manifest file as it is on disk now.
+    pub fn manifest_hash(&self, file: &str) -> String {
         let bytes = std::fs::read(self.project.manifest_dir().join(file)).unwrap_or_default();
-        Sha256::digest(&bytes)
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        hash(&bytes)
     }
 
-    fn targets_hash(&self) -> String {
-        self.manifest_hash("targets.yaml")
+    /// Commands and URLs in targets.yaml are only used while the file is
+    /// exactly the version the user approved.
+    pub fn targets_approved(&self) -> bool {
+        self.store.kv_get("targets_approved").ok().flatten()
+            == Some(self.manifest_hash("targets.yaml"))
     }
 
     /// The requirements file is in the workspace, where an agent could edit
@@ -328,26 +340,40 @@ impl Engine {
             == Some(self.manifest_hash("requirements.yaml"))
     }
 
-    pub fn approve_requirements(&self) -> Result<()> {
-        self.store
-            .kv_set("requirements_approved", &self.manifest_hash("requirements.yaml"))?;
+    /// Approves a manifest file. `seen` is the hash of the content the user
+    /// was shown; if the file has changed since, the approval is refused
+    /// rather than silently applied to something they never read.
+    fn approve(&self, file: &str, key: &str, seen: &str) -> Result<()> {
+        if self.manifest_hash(file) != seen {
+            bail!("{file} changed after it was shown to you; review it again");
+        }
+        self.store.kv_set(key, seen)?;
         self.notify(UiEvent::Status);
         Ok(())
     }
 
-    /// Commands in targets.yaml only run after the user approved exactly this
-    /// version of the file.
-    pub fn targets_approved(&self) -> bool {
-        self.store.kv_get("targets_approved").ok().flatten() == Some(self.targets_hash())
+    pub fn approve_targets(&self, seen: &str) -> Result<()> {
+        self.approve("targets.yaml", "targets_approved", seen)
     }
 
-    pub fn approve_targets(&self) -> Result<()> {
-        self.store.kv_set("targets_approved", &self.targets_hash())?;
+    pub fn approve_requirements(&self, seen: &str) -> Result<()> {
+        self.approve("requirements.yaml", "requirements_approved", seen)
+    }
+
+    /// Records approval of content Aperture itself just wrote on the user's
+    /// behalf, hashed from the written bytes rather than re-read from disk.
+    pub fn approve_written(&self, key: &str, written: &str) -> Result<()> {
+        self.store.kv_set(key, &hash(written.as_bytes()))?;
         self.notify(UiEvent::Status);
         Ok(())
     }
 
     pub fn overview(&self) -> Result<Overview> {
+        // Hash before loading: if a file changes in between, the hash is of
+        // the older content and the approval will be refused, never the
+        // other way round.
+        let targets_hash = self.manifest_hash("targets.yaml");
+        let requirements_hash = self.manifest_hash("requirements.yaml");
         let (manifest, status) = self.status()?;
         let mut latest: HashMap<String, VerificationResult> = HashMap::new();
         for result in self.store.results()? {
@@ -369,6 +395,8 @@ impl Engine {
             config: self.config(),
             targets_approved: self.targets_approved(),
             requirements_approved: self.requirements_approved(),
+            targets_hash,
+            requirements_hash,
         })
     }
 
@@ -409,13 +437,13 @@ impl Engine {
         if accept {
             match kind {
                 "requirements" => {
-                    self.project.save_requirements(&serde_json::from_str(&text)?)?;
-                    self.approve_requirements()?;
+                    let written = self.project.save_requirements(&serde_json::from_str(&text)?)?;
+                    self.approve_written("requirements_approved", &written)?;
                 }
                 "architecture" => self.project.save_architecture(&serde_json::from_str(&text)?)?,
                 "targets" => {
-                    self.project.save_targets(&serde_json::from_str(&text)?)?;
-                    self.store.kv_set("targets_approved", &self.targets_hash())?;
+                    let written = self.project.save_targets(&serde_json::from_str(&text)?)?;
+                    self.approve_written("targets_approved", &written)?;
                 }
                 other => bail!("unknown proposal kind {other}"),
             }

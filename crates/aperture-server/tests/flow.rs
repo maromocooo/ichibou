@@ -193,8 +193,20 @@ async fn build_verify_annotate_demote_restart() {
     assert_eq!(overview["targets_approved"], false);
     assert_eq!(overview["status"]["architecture"]["nodes"]["core"], "present");
     assert_eq!(overview["requirements_approved"], false);
-    api.post("/api/targets/approve", json!({})).await;
-    api.post("/api/requirements/approve", json!({})).await;
+    // An approval names the content the user saw. One for content that is
+    // no longer on disk is refused.
+    let stale = api
+        .http
+        .post(format!("{}/api/requirements/approve", api.base))
+        .header("x-aperture-token", &api.token)
+        .json(&json!({ "hash": "0000" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stale.status(), 400);
+    assert_eq!(api.get("/api/overview").await["requirements_approved"], false);
+    api.post("/api/targets/approve", json!({ "hash": overview["targets_hash"] })).await;
+    api.post("/api/requirements/approve", json!({ "hash": overview["requirements_hash"] })).await;
     api.post("/api/scenarios/approve-all", json!({})).await;
     // The daemon keeps nothing of its own inside the workspace.
     assert!(!root.join(".aperture/local").exists());
@@ -397,7 +409,8 @@ async fn inspectors_wait_for_approval_and_stay_inside_the_project() {
         .unwrap();
     assert_eq!(refused.status(), 400);
 
-    api.post("/api/targets/approve", json!({})).await;
+    let hash = api.get("/api/overview").await["targets_hash"].clone();
+    api.post("/api/targets/approve", json!({ "hash": hash })).await;
     let (status, body) = get("/api/inspect/openapi/api").await;
     assert_eq!(status, 200, "{body}");
     // Approved or not, a path that leaves the project is refused.

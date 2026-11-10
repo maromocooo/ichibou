@@ -315,8 +315,14 @@ async fn decide_proposal(
     ok()
 }
 
-async fn approve_targets(State(engine): State<Arc<Engine>>) -> ApiResult {
-    engine.approve_targets()?;
+#[derive(Deserialize)]
+struct Seen {
+    /// Hash of the content the UI displayed (from the overview).
+    hash: String,
+}
+
+async fn approve_targets(State(engine): State<Arc<Engine>>, Json(seen): Json<Seen>) -> ApiResult {
+    engine.approve_targets(&seen.hash)?;
     engine.verify_if_stale();
     ok()
 }
@@ -329,13 +335,13 @@ async fn save_manifest(
 ) -> ApiResult {
     match kind.as_str() {
         "requirements" => {
-            engine.project.save_requirements(&serde_json::from_value(doc)?)?;
-            engine.approve_requirements()?;
+            let written = engine.project.save_requirements(&serde_json::from_value(doc)?)?;
+            engine.approve_written("requirements_approved", &written)?;
         }
         "architecture" => engine.project.save_architecture(&serde_json::from_value(doc)?)?,
         "targets" => {
-            engine.project.save_targets(&serde_json::from_value(doc)?)?;
-            engine.approve_targets()?;
+            let written = engine.project.save_targets(&serde_json::from_value(doc)?)?;
+            engine.approve_written("targets_approved", &written)?;
         }
         "scenarios" => engine.project.save_scenarios(&serde_json::from_value(doc)?)?,
         other => return Err(anyhow::anyhow!("unknown manifest part {other}").into()),
@@ -556,7 +562,10 @@ async fn preview_stream(State(engine): State<Arc<Engine>>, Path(target): Path<St
     }
 }
 
-async fn approve_requirements(State(engine): State<Arc<Engine>>) -> ApiResult {
-    engine.approve_requirements()?;
+async fn approve_requirements(
+    State(engine): State<Arc<Engine>>,
+    Json(seen): Json<Seen>,
+) -> ApiResult {
+    engine.approve_requirements(&seen.hash)?;
     ok()
 }

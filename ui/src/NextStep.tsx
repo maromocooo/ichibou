@@ -135,7 +135,7 @@ export function NextStep() {
           ))}
         </ol>
         <div>
-          <button className="primary" onClick={() => act(() => api.approveRequirements())}>
+          <button className="primary" onClick={() => act(() => api.approveRequirements(overview.requirements_hash))}>
             {t("proposal.accept")}
           </button>
         </div>
@@ -169,7 +169,7 @@ export function NextStep() {
           ))}
         </ul>
         <div>
-          <button className="primary" onClick={() => act(() => api.approveTargets())}>
+          <button className="primary" onClick={() => act(() => api.approveTargets(overview.targets_hash))}>
             {t("proposal.accept")}
           </button>
         </div>

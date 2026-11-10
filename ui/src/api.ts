@@ -228,6 +228,8 @@ export interface Overview {
   config: Config;
   targets_approved: boolean;
   requirements_approved: boolean;
+  targets_hash: string;
+  requirements_hash: string;
 }
 
 export interface StoredEvent {
@@ -322,8 +324,9 @@ export const api = {
     call("POST", "/manual", { requirement, check, confirmed }),
   decideProposal: (kind: "requirements" | "architecture" | "targets", accept: boolean) =>
     call("POST", `/proposals/${kind}`, { accept }),
-  approveTargets: () => call("POST", "/targets/approve", {}),
-  approveRequirements: () => call("POST", "/requirements/approve", {}),
+  // `hash` is the hash of the content that was on screen (from the overview).
+  approveTargets: (hash: string) => call("POST", "/targets/approve", { hash }),
+  approveRequirements: (hash: string) => call("POST", "/requirements/approve", { hash }),
   previewStart: (target: string) => call("POST", `/previews/${encodeURIComponent(target)}/start`, {}),
   previewStop: (target: string) => call("POST", `/previews/${encodeURIComponent(target)}/stop`, {}),
   previewTap: (target: string, x: number, y: number) =>
