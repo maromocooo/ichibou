@@ -1,4 +1,4 @@
-// Types mirror the daemon's JSON (crates/aperture-core/src/model.rs and
+// Types mirror the daemon's JSON (crates/ichibou-core/src/model.rs and
 // status.rs). Keep them in step when the Rust side changes.
 
 export interface Criterion {
@@ -283,7 +283,7 @@ function readToken(): string {
   const fromUrl = params.get("token");
   if (fromUrl) {
     try {
-      sessionStorage.setItem("aperture-token", fromUrl);
+      sessionStorage.setItem("ichibou-token", fromUrl);
     } catch {
       // Storage can be unavailable; the token still works for this page load.
     }
@@ -293,7 +293,7 @@ function readToken(): string {
     return fromUrl;
   }
   try {
-    return sessionStorage.getItem("aperture-token") ?? "";
+    return sessionStorage.getItem("ichibou-token") ?? "";
   } catch {
     return "";
   }
@@ -306,7 +306,7 @@ export class ApiError extends Error {}
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
-    headers: { "x-aperture-token": token, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    headers: { "x-ichibou-token": token, ...(body === undefined ? {} : { "content-type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (response.status === 403) {

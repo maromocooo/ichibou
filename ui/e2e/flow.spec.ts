@@ -14,16 +14,16 @@ let scratch: string;
 let url: string;
 
 test.beforeAll(async () => {
-  scratch = mkdtempSync(path.join(tmpdir(), "aperture-e2e-"));
+  scratch = mkdtempSync(path.join(tmpdir(), "ichibou-e2e-"));
   const project = path.join(scratch, "web-demo");
   cpSync(path.join(repo, "fixtures/web-demo"), project, { recursive: true });
   daemon = spawn(
-    // APERTURE_BIN points the test at another build (a release binary).
-    process.env.APERTURE_BIN ?? path.join(repo, "target/debug/aperture"),
+    // ICHIBOU_BIN points the test at another build (a release binary).
+    process.env.ICHIBOU_BIN ?? path.join(repo, "target/debug/ichibou"),
     ["--project", project, "serve", "--port", "0", "--no-open", "--json", "--agent", "fake",
      "--fake-script", path.join(repo, "fixtures/web-demo-script.json")],
     // State goes to the scratch folder, not the real per-user directory.
-    { env: { ...process.env, APERTURE_STATE_DIR: path.join(scratch, "state") } },
+    { env: { ...process.env, ICHIBOU_STATE_DIR: path.join(scratch, "state") } },
   );
   url = await new Promise<string>((resolve, reject) => {
     let out = "";
@@ -43,17 +43,17 @@ test.afterAll(async () => {
 });
 
 test("request to verified, with feedback on the way", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("aperture-lang", "en"));
+  await page.addInitScript(() => localStorage.setItem("ichibou-lang", "en"));
   await page.goto(url);
   const sidebar = page.locator(".sidebar");
   const next = page.locator(".next");
 
   // Nothing counts until the user has approved requirements, scenarios and commands.
-  await expect(next).toContainText("requirements were changed outside Aperture");
+  await expect(next).toContainText("requirements were changed outside Ichibou");
   await next.getByRole("button", { name: "Accept" }).click();
   await next.getByRole("button", { name: /Review and approve the scenarios/ }).click();
   await page.getByRole("button", { name: /Approve all/ }).click();
-  await expect(next).toContainText("Approve the commands Aperture will run");
+  await expect(next).toContainText("Approve the commands Ichibou will run");
   await expect(next).toContainText("node server.js");
   await next.getByRole("button", { name: "Accept" }).click();
 

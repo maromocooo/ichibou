@@ -12,7 +12,7 @@ export const LANGS: { id: Lang; label: string }[] = [
 // `ja` and `zh` enforces it.
 const en = {
   "app.tagline": "See what your agent is building, and know when it is really done.",
-  "app.forbidden": "This page needs the link printed by `aperture` (it carries an access token).",
+  "app.forbidden": "This page needs the link printed by `ichibou` (it carries an access token).",
   "app.loading": "Loading…",
   "app.complete": "Request complete",
   "app.incomplete": "{done} of {total} requirements verified",
@@ -66,8 +66,8 @@ const en = {
   "next.review": "Review what the agent proposed",
   "next.scenarios": "Have the agent write scenario tests",
   "next.approveScenarios": "Review and approve the scenarios",
-  "next.approveTargets": "Approve the commands Aperture will run",
-  "next.approveRequirements": "The requirements were changed outside Aperture. Review and approve them.",
+  "next.approveTargets": "Approve the commands Ichibou will run",
+  "next.approveRequirements": "The requirements were changed outside Ichibou. Review and approve them.",
   "next.build": "Build everything",
   "next.working": "The agent is working",
   "next.verify": "Verify now",
@@ -80,7 +80,7 @@ const en = {
   "proposal.targets": "Proposed commands and sources",
   "proposal.accept": "Accept",
   "proposal.reject": "Discard",
-  "proposal.targets.note": "Accepting allows Aperture to run these commands on your machine.",
+  "proposal.targets.note": "Accepting allows Ichibou to run these commands on your machine.",
   "targets.commands": "Commands in targets.yaml",
 
   "agent.title": "Agent",
@@ -196,7 +196,7 @@ type Dict = Record<keyof typeof en, string>;
 
 const ja: Dict = {
   "app.tagline": "エージェントが今何を作っているかを見て、本当に完成したかを確かめる。",
-  "app.forbidden": "このページは `aperture` が表示したリンク（アクセストークン付き）から開いてください。",
+  "app.forbidden": "このページは `ichibou` が表示したリンク（アクセストークン付き）から開いてください。",
   "app.loading": "読み込み中…",
   "app.complete": "リクエスト完了",
   "app.incomplete": "要件 {total} 件中 {done} 件を検証済み",
@@ -250,8 +250,8 @@ const ja: Dict = {
   "next.review": "エージェントの提案を確認する",
   "next.scenarios": "エージェントにシナリオテストを書かせる",
   "next.approveScenarios": "シナリオを確認して承認する",
-  "next.approveTargets": "Aperture が実行するコマンドを承認する",
-  "next.approveRequirements": "要件が Aperture の外で変更されています。確認して承認してください。",
+  "next.approveTargets": "Ichibou が実行するコマンドを承認する",
+  "next.approveRequirements": "要件が Ichibou の外で変更されています。確認して承認してください。",
   "next.build": "すべて作る",
   "next.working": "エージェントが作業中です",
   "next.verify": "今すぐ検証する",
@@ -264,7 +264,7 @@ const ja: Dict = {
   "proposal.targets": "コマンドと取得元の提案",
   "proposal.accept": "採用",
   "proposal.reject": "破棄",
-  "proposal.targets.note": "採用すると、Aperture がこれらのコマンドをこのマシンで実行できるようになります。",
+  "proposal.targets.note": "採用すると、Ichibou がこれらのコマンドをこのマシンで実行できるようになります。",
   "targets.commands": "targets.yaml のコマンド",
 
   "agent.title": "エージェント",
@@ -378,7 +378,7 @@ const ja: Dict = {
 
 const zh: Dict = {
   "app.tagline": "看清智能体正在构建什么，并确认它是否真的完成。",
-  "app.forbidden": "请通过 `aperture` 输出的链接打开此页面（链接中带有访问令牌）。",
+  "app.forbidden": "请通过 `ichibou` 输出的链接打开此页面（链接中带有访问令牌）。",
   "app.loading": "加载中…",
   "app.complete": "请求已完成",
   "app.incomplete": "{total} 项需求中已验证 {done} 项",
@@ -432,8 +432,8 @@ const zh: Dict = {
   "next.review": "查看智能体的提议",
   "next.scenarios": "让智能体编写场景测试",
   "next.approveScenarios": "查看并批准场景",
-  "next.approveTargets": "批准 Aperture 将运行的命令",
-  "next.approveRequirements": "需求在 Aperture 之外被修改过。请查看并批准。",
+  "next.approveTargets": "批准 Ichibou 将运行的命令",
+  "next.approveRequirements": "需求在 Ichibou 之外被修改过。请查看并批准。",
   "next.build": "全部构建",
   "next.working": "智能体正在工作",
   "next.verify": "立即验证",
@@ -446,7 +446,7 @@ const zh: Dict = {
   "proposal.targets": "命令与数据来源提议",
   "proposal.accept": "采纳",
   "proposal.reject": "放弃",
-  "proposal.targets.note": "采纳后，Aperture 可以在你的电脑上运行这些命令。",
+  "proposal.targets.note": "采纳后，Ichibou 可以在你的电脑上运行这些命令。",
   "targets.commands": "targets.yaml 中的命令",
 
   "agent.title": "智能体",
@@ -576,7 +576,7 @@ export function translator(lang: Lang): T {
 
 export function initialLang(): Lang {
   try {
-    const saved = localStorage.getItem("aperture-lang");
+    const saved = localStorage.getItem("ichibou-lang");
     if (saved === "en" || saved === "ja" || saved === "zh") return saved;
   } catch {
     // Fall through to the browser language.

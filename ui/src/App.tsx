@@ -28,7 +28,7 @@ export function App() {
   useEffect(() => {
     document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
     try {
-      localStorage.setItem("aperture-lang", lang);
+      localStorage.setItem("ichibou-lang", lang);
     } catch {
       // The choice just will not be remembered.
     }
@@ -86,7 +86,7 @@ export function App() {
       <AppCtx.Provider value={{ overview, previews, events, annotate: setDraft, act, go: setTab }}>
         <div className="shell">
           <header className="topbar">
-            <strong className="brand">Aperture</strong>
+            <strong className="brand">Ichibou</strong>
             <span className="project" title={overview.project_root}>
               {projectName}
             </span>

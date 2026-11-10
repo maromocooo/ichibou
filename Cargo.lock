@@ -89,97 +89,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "aperture-agents"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aperture-core",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "aperture-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aperture-core",
- "aperture-server",
- "clap",
- "serde_json",
- "tokio",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "aperture-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "ignore",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.10.9",
- "tempfile",
- "thiserror",
- "uuid",
-]
-
-[[package]]
-name = "aperture-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aperture-agents",
- "aperture-core",
- "aperture-verify",
- "axum",
- "base64 0.22.1",
- "chrono",
- "futures-util",
- "ignore",
- "mime_guess",
- "notify",
- "reqwest",
- "rusqlite",
- "rust-embed",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.10.9",
- "tempfile",
- "tokio",
- "tokio-postgres",
- "tokio-tungstenite 0.26.2",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "aperture-verify"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aperture-core",
- "chrono",
- "libc",
- "quick-xml",
- "reqwest",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "async-trait"
 version = "0.1.92"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -984,6 +893,97 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "ichibou-agents"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ichibou-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "ichibou-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "ichibou-core",
+ "ichibou-server",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "ichibou-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "ignore",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "ichibou-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "futures-util",
+ "ichibou-agents",
+ "ichibou-core",
+ "ichibou-verify",
+ "ignore",
+ "mime_guess",
+ "notify",
+ "reqwest",
+ "rusqlite",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-postgres",
+ "tokio-tungstenite 0.26.2",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "ichibou-verify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "ichibou-core",
+ "libc",
+ "quick-xml",
+ "reqwest",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

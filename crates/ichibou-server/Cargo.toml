@@ -1,0 +1,33 @@
+[package]
+name = "ichibou-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+ichibou-agents = { path = "../ichibou-agents" }
+ichibou-core = { path = "../ichibou-core" }
+ichibou-verify = { path = "../ichibou-verify" }
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+futures-util.workspace = true
+ignore.workspace = true
+mime_guess.workspace = true
+notify.workspace = true
+reqwest.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+tokio-postgres.workspace = true
+rusqlite.workspace = true
+serde_yaml.workspace = true
+tokio-tungstenite.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

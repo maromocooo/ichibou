@@ -1,17 +1,19 @@
-# Aperture
+# Ichibou
 
 [English](README.md) · **日本語** · [简体中文](README.zh-CN.md)
 
 コーディングエージェントが今何を作っているかを見ながら、本当に完成したかを確かめるためのツールです。
 
-Aperture は、Claude Code や Codex に細かいフェーズ分けをさせず、製品全体を一気に作らせたい人のためのローカルツールです。その進め方で分からなくなる「エージェントは今どこを作っているのか」「これは本当に終わったのか」の 2 点に答えます。
+Ichibou は、Claude Code や Codex に細かいフェーズ分けをさせず、製品全体を一気に作らせたい人のためのローカルツールです。その進め方で分からなくなる「エージェントは今どこを作っているのか」「これは本当に終わったのか」の 2 点に答えます。
 
-> 名称は仮称です。まだ初期段階のため、利用前に[現在動くもの](#現在動くもの)を確認してください。
+名前は「一望」（全体を一目で見渡すこと）から取っています。
+
+> まだ初期段階のため、利用前に[現在動くもの](#現在動くもの)を確認してください。
 
 ## できること
 
 - **要件チェックリスト。** エージェントは最初に、完成品に必要な要件をすべて洗い出します。各要件について、実装中・検証が必要・失敗中・検証済みのどれか、そして何の後に着手されるかが表示されます。
-- **チェックは申告ではなく証拠で付きます。** エージェントは完了を付けられません。Aperture が作業フォルダをコピーし、そのコピーをビルド・起動して、あなたが承認したシナリオテストを実行します。ファイルを 1 つでも編集すると、それまでの成功は再検証されるまで取り下げられます。
+- **チェックは申告ではなく証拠で付きます。** エージェントは完了を付けられません。Ichibou が作業フォルダをコピーし、そのコピーをビルド・起動して、あなたが承認したシナリオテストを実行します。ファイルを 1 つでも編集すると、それまでの成功は再検証されるまで取り下げられます。
 - **フロントエンドタブ。** 出来上がっていくアプリのライブプレビューです。Web アプリはローカルのプロキシ経由で、iOS Simulator・Android Emulator・macOS のウィンドウは定期更新されるスクリーンショットで表示します。プロジェクト内の画像やフォントも一覧できます。
 - **注釈。** 要素をクリック（または範囲をドラッグ）して、変えてほしい点や知りたいことを書きます。修正依頼はエージェント向けのキューに積まれ、質問にはスレッド上で回答が付きます。解決済みにするかどうかはあなたが決めます。
 - **バックエンドタブ。** 目標の構成図を最初から表示します。計画段階の部分は薄く、コードがある部分ははっきり、検証済みの部分には印が付きます。API をクリックすると OpenAPI の操作一覧が見え、起動中の開発サーバーにリクエストを送れます。データベースをクリックするとテーブル構成が見えます。
@@ -19,41 +21,41 @@ Aperture は、Claude Code や Codex に細かいフェーズ分けをさせず�
 
 ## エージェントの動かし方
 
-Aperture は、あなたのマシンにインストール済み・サインイン済みの公式コマンドラインツール `claude` と `codex` を子プロセスとして起動します。認証情報を読んだり保存したり中継したりはせず、モデルの API を直接呼ぶこともありません。利用量はあなた自身の Claude / ChatGPT のプランの範囲です。
+Ichibou は、あなたのマシンにインストール済み・サインイン済みの公式コマンドラインツール `claude` と `codex` を子プロセスとして起動します。認証情報を読んだり保存したり中継したりはせず、モデルの API を直接呼ぶこともありません。利用量はあなた自身の Claude / ChatGPT のプランの範囲です。
 
-Aperture は、権限チェックを無効にした状態でエージェントを起動しません。書き込みを行う Claude のセッションは設定した権限モード（既定は `acceptEdits`）で動き、Codex のセッションはワークスペースのサンドボックス内で動いて、承認が必要なコマンドは Aperture 経由で確認します。
+Ichibou は、権限チェックを無効にした状態でエージェントを起動しません。書き込みを行う Claude のセッションは設定した権限モード（既定は `acceptEdits`）で動き、Codex のセッションはワークスペースのサンドボックス内で動いて、承認が必要なコマンドは Ichibou 経由で確認します。
 
 ## インストール
 
 必要なもの：macOS、Rust 1.85 以上、Node.js 20 以上、サインイン済みの [Claude Code](https://claude.com/claude-code) または [Codex CLI](https://developers.openai.com/codex)（どちらか一方で可）。
 
 ```sh
-git clone <このリポジトリ> aperture && cd aperture
+git clone <このリポジトリ> ichibou && cd ichibou
 npm --prefix ui install && npm --prefix ui run build
-cargo install --path crates/aperture-cli
-aperture doctor
+cargo install --path crates/ichibou-cli
+ichibou doctor
 ```
 
 ## 使い方
 
 ```sh
 cd your-project        # 空のフォルダでも既存のリポジトリでも可
-aperture               # デーモンを起動して UI を開く
+ichibou               # デーモンを起動して UI を開く
 ```
 
 1. 作りたいものを説明します（既存リポジトリの場合は、エージェントに内容を整理させます）。
-2. 要件、構成、Aperture が実行するコマンドを確認して採用します。
+2. 要件、構成、Ichibou が実行するコマンドを確認して採用します。
 3. エージェントにシナリオテストを書かせ、承認します。
 4. **すべて作る** を押します。チェックリスト・プレビュー・構成図が埋まっていく様子を見ながら、気になる所に注釈を付けます。
 5. すべての要件が現在の版で検証済みになり、手動確認にチェックが付き、フィードバックが解決されたら、そのリクエストは完了です。
 
-Aperture がプロジェクトについて持つ情報は、すべてプロジェクト内の `.aperture/` にあります。`requirements.yaml`、`architecture.yaml`、`targets.yaml`、`scenarios/` はコミットする想定です。Aperture 自身の状態（承認、検証結果、注釈、ログ）はプロジェクトの外の `~/Library/Application Support/Aperture/` に置かれるので、プロジェクト内で作業するエージェントからは書き換えられません。
+Ichibou がプロジェクトについて持つ情報は、すべてプロジェクト内の `.ichibou/` にあります。`requirements.yaml`、`architecture.yaml`、`targets.yaml`、`scenarios/` はコミットする想定です。Ichibou 自身の状態（承認、検証結果、注釈、ログ）はプロジェクトの外の `~/Library/Application Support/Ichibou/` に置かれるので、プロジェクト内で作業するエージェントからは書き換えられません。
 
 ### エージェントの利用枠を使わずに試す
 
 ```sh
 cp -R fixtures/web-demo /tmp/web-demo
-aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-demo-script.json
+ichibou --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-demo-script.json
 ```
 
 スクリプトで動く代役のエージェントが、小さなメモアプリを段階的に作ります。
@@ -61,7 +63,7 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 ### リリース用アーカイブの作成
 
 ```sh
-scripts/package.sh     # dist/aperture-<version>-<os>-<arch>.tar.gz と SHA-256 を出力
+scripts/package.sh     # dist/ichibou-<version>-<os>-<arch>.tar.gz と SHA-256 を出力
 ```
 
 バイナリは UI を内蔵しているので、配布に必要なのはこのアーカイブだけです。
@@ -74,11 +76,11 @@ scripts/package.sh     # dist/aperture-<version>-<os>-<arch>.tar.gz と SHA-256 
 | Claude Code / Codex：デーモン経由の要件洗い出し | Claude Code 2.1 と Codex CLI 0.167 で動作 |
 | Claude Code：全体ビルド、検証、注釈の修正 | 動作（デモアプリを実装し、承認済みシナリオがすべて成功） |
 | Codex：検証結果を返しながらの全体ビルド | 実装済み。動かしたのは要件洗い出しのみ |
-| Claude Code / Codex：既存リポジトリの整理、質問注釈への回答 | 動作（読み取り専用セッション：読み取り用ツールと Aperture 自身のツールのみ） |
+| Claude Code / Codex：既存リポジトリの整理、質問注釈への回答 | 動作（読み取り専用セッション：読み取り用ツールと Ichibou 自身のツールのみ） |
 | Web プレビュー、要素・範囲への注釈 | 動作 |
 | iOS Simulator プレビュー（タップには `idb` が必要） | 動作。[serve-sim](https://github.com/EvanBacon/serve-sim) があればライブ映像、なければ 1〜2 秒ごとのスクリーンショット |
 | Android Emulator プレビュー（`adb`） | 動作。WebCodecs 対応ブラウザ（Chrome、Edge、最近の Safari）ではライブ映像、それ以外は数秒ごとのスクリーンショット |
-| macOS ウィンドウのプレビュー | 動作。表示のみ（操作の転送なし）。`aperture` を起動するアプリ（ターミナル、またはその下で常駐するマルチプレクサ）に画面収録の許可が必要 |
+| macOS ウィンドウのプレビュー | 動作。表示のみ（操作の転送なし）。`ichibou` を起動するアプリ（ターミナル、またはその下で常駐するマルチプレクサ）に画面収録の許可が必要 |
 | OpenAPI 表示とリクエスト実行、SQLite のテーブル | 動作 |
 | PostgreSQL のテーブル | 動作 |
 | シナリオ実行：JUnit XML を出力する任意のコマンド | 動作 |
@@ -93,8 +95,8 @@ npm --prefix ui run typecheck
 npm --prefix ui run e2e      # 実際のデーモンとスクリプトの代役エージェントで UI を通す
 ```
 
-構成：`crates/aperture-core`（モデル、状態判定、スナップショット、ストア）、`aperture-agents`（Claude・Codex・スクリプトの各ドライバー）、`aperture-verify`（検証ランナー）、`aperture-server`（デーモン：API、MCP ツール、プレビュー、インスペクタ）、`aperture-cli`、`ui/`（React）、`overlay/`（Web プレビューに注入するスクリプト）。
+構成：`crates/ichibou-core`（モデル、状態判定、スナップショット、ストア）、`ichibou-agents`（Claude・Codex・スクリプトの各ドライバー）、`ichibou-verify`（検証ランナー）、`ichibou-server`（デーモン：API、MCP ツール、プレビュー、インスペクタ）、`ichibou-cli`、`ui/`（React）、`overlay/`（Web プレビューに注入するスクリプト）。
 
 ## ライセンス
 
-Apache-2.0。Aperture は Anthropic および OpenAI とは無関係です。
+Apache-2.0。Ichibou は Anthropic および OpenAI とは無関係です。

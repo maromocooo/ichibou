@@ -3,7 +3,7 @@ import { type Overview, type TargetsDoc, api } from "./api";
 import { useApp } from "./app-context";
 import { useT } from "./i18n";
 
-/** Every command Aperture would run for these targets, for the user to read. */
+/** Every command Ichibou would run for these targets, for the user to read. */
 function commands(targets: TargetsDoc): string[] {
   const list: string[] = [];
   for (const target of targets.targets) {
@@ -116,7 +116,7 @@ export function NextStep() {
       </div>
     );
   } else if (!overview.requirements_approved) {
-    // The file changed outside Aperture (or was never reviewed here).
+    // The file changed outside Ichibou (or was never reviewed here).
     body = (
       <div className="stack">
         <strong>{t("next.approveRequirements")}</strong>

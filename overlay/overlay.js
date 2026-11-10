@@ -1,17 +1,17 @@
-// Aperture annotation overlay.
+// Ichibou annotation overlay.
 //
 // Injected by the preview proxy into every HTML page of the app being built.
-// It lets the Aperture UI (the parent frame) ask the user to pick an element
+// It lets the Ichibou UI (the parent frame) ask the user to pick an element
 // or drag a region, and reports what was picked. It has no dependencies and
-// talks only to the Aperture UI's origin.
+// talks only to the Ichibou UI's origin.
 (function () {
   "use strict";
-  if (window.__apertureOverlay) return;
-  window.__apertureOverlay = true;
+  if (window.__ichibouOverlay) return;
+  window.__ichibouOverlay = true;
 
-  var UI_ORIGIN = "__APERTURE_ORIGIN__";
-  var TARGET = "__APERTURE_TARGET__";
-  if (window.parent === window) return; // Opened directly, not inside Aperture.
+  var UI_ORIGIN = "__ICHIBOU_ORIGIN__";
+  var TARGET = "__ICHIBOU_TARGET__";
+  if (window.parent === window) return; // Opened directly, not inside Ichibou.
 
   var picking = false;
   var box = null; // highlight rectangle
@@ -28,7 +28,7 @@
   }
 
   function reportLocation() {
-    send({ type: "aperture:location", url: page(), title: document.title });
+    send({ type: "ichibou:location", url: page(), title: document.title });
   }
 
   // A selector a person (and an agent grepping the code) can read: ids and
@@ -63,14 +63,14 @@
   // Source location, when the app's build marks elements with it
   // (data-source="file:line:col", as several Vite/Babel/SWC plugins do).
   function sourceFor(element) {
-    var node = element.closest("[data-source],[data-aperture-source],[data-inspector-relative-path]");
+    var node = element.closest("[data-source],[data-ichibou-source],[data-inspector-relative-path]");
     if (!node) return null;
     var relative = node.getAttribute("data-inspector-relative-path");
     if (relative) {
       var line = node.getAttribute("data-inspector-line");
       return line ? relative + ":" + line : relative;
     }
-    return node.getAttribute("data-source") || node.getAttribute("data-aperture-source");
+    return node.getAttribute("data-source") || node.getAttribute("data-ichibou-source");
   }
 
   function ensureBox() {
@@ -162,7 +162,7 @@
     if (dx > 8 || dy > 8) {
       // A drag selects a region rather than an element.
       send({
-        type: "aperture:pick",
+        type: "ichibou:pick",
         kind: "region",
         url: page(),
         viewport: viewport,
@@ -177,7 +177,7 @@
       var element = document.elementFromPoint(event.clientX, event.clientY);
       if (element) {
         send({
-          type: "aperture:pick",
+          type: "ichibou:pick",
           kind: "element",
           url: page(),
           viewport: viewport,
@@ -201,7 +201,7 @@
   function onKey(event) {
     if (picking && event.key === "Escape") {
       setPicking(false);
-      send({ type: "aperture:cancel" });
+      send({ type: "ichibou:cancel" });
     }
   }
 
@@ -213,8 +213,8 @@
 
   window.addEventListener("message", function (event) {
     if (event.origin !== UI_ORIGIN || !event.data) return;
-    if (event.data.type === "aperture:pick-mode") setPicking(!!event.data.on);
-    if (event.data.type === "aperture:highlight") {
+    if (event.data.type === "ichibou:pick-mode") setPicking(!!event.data.on);
+    if (event.data.type === "ichibou:highlight") {
       // Show where an existing annotation points, if the element still exists.
       var found = null;
       try {
@@ -227,9 +227,9 @@
         show(rectOf(found), event.data.selector);
         setTimeout(hide, 2500);
       }
-      send({ type: "aperture:highlighted", id: event.data.id, found: !!found });
+      send({ type: "ichibou:highlighted", id: event.data.id, found: !!found });
     }
-    if (event.data.type === "aperture:navigate" && typeof event.data.url === "string") {
+    if (event.data.type === "ichibou:navigate" && typeof event.data.url === "string") {
       location.href = event.data.url;
     }
   });

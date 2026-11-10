@@ -104,9 +104,9 @@ function WebPreview({ preview }: { preview: PreviewInfo }) {
     const onMessage = (event: MessageEvent<Pick>) => {
       if (event.origin !== origin || !event.data || event.data.target !== preview.target) return;
       const data = event.data;
-      if (data.type === "aperture:location" && data.url) setPage(data.url);
-      if (data.type === "aperture:cancel") setPicking(false);
-      if (data.type === "aperture:pick" && data.rect) {
+      if (data.type === "ichibou:location" && data.url) setPage(data.url);
+      if (data.type === "ichibou:cancel") setPicking(false);
+      if (data.type === "ichibou:pick" && data.rect) {
         setPicking(false);
         if (data.kind === "element" && data.selector) {
           annotate({
@@ -129,7 +129,7 @@ function WebPreview({ preview }: { preview: PreviewInfo }) {
 
   const setMode = (on: boolean) => {
     setPicking(on);
-    frame.current?.contentWindow?.postMessage({ type: "aperture:pick-mode", on }, origin);
+    frame.current?.contentWindow?.postMessage({ type: "ichibou:pick-mode", on }, origin);
   };
 
   return (
