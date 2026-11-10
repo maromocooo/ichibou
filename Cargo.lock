@@ -897,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "ichibou-agents"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "ichibou-core",
@@ -911,7 +911,7 @@ dependencies = [
 
 [[package]]
 name = "ichibou-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -924,7 +924,7 @@ dependencies = [
 
 [[package]]
 name = "ichibou-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -942,7 +942,7 @@ dependencies = [
 
 [[package]]
 name = "ichibou-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "ichibou-verify"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
