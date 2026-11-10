@@ -66,6 +66,8 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 | Claude Code / Codex：デーモン経由の要件洗い出し | Claude Code 2.1 と Codex CLI 0.167 で動作 |
 | Claude Code：全体ビルド、検証、注釈の修正 | 動作（デモアプリを実装し、承認済みシナリオがすべて成功） |
 | Codex：検証結果を返しながらの全体ビルド | 実装済み。動かしたのは要件洗い出しのみ |
+| Claude Code：既存リポジトリの整理、質問注釈への回答 | 動作（読み取り専用セッション：読み取り用ツールと Aperture 自身のツールのみ） |
+| Codex：既存リポジトリの整理、質問注釈への回答 | 実装済み。未実行 |
 | Web プレビュー、要素・範囲への注釈 | 動作 |
 | iOS Simulator プレビュー（タップには `idb` が必要） | 動作。[serve-sim](https://github.com/EvanBacon/serve-sim) があればライブ映像、なければ 1〜2 秒ごとのスクリーンショット |
 | Android Emulator プレビュー（`adb`） | 動作。数秒ごとのスクリーンショット |

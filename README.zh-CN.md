@@ -66,6 +66,8 @@ aperture --project /tmp/web-demo serve --agent fake --fake-script fixtures/web-d
 | Claude Code 与 Codex：通过守护进程列出需求 | 在 Claude Code 2.1 和 Codex CLI 0.167 上可用 |
 | Claude Code：完整构建、验证、根据标注修改 | 可用（已构建示例应用，已批准的场景全部通过） |
 | Codex：带验证反馈的完整构建 | 已实现；目前只运行过列出需求这一步 |
+| Claude Code：梳理已有仓库、回答提问标注 | 可用（只读会话：仅有读取类工具和 Aperture 自身的工具） |
+| Codex：梳理已有仓库、回答提问标注 | 已实现，尚未运行 |
 | Web 预览、元素与区域标注 | 可用 |
 | iOS 模拟器预览（轻触需要 `idb`） | 可用；安装 [serve-sim](https://github.com/EvanBacon/serve-sim) 后为实时视频，否则每一两秒刷新一次截图 |
 | Android 模拟器预览（`adb`） | 可用；每隔几秒刷新一次截图 |

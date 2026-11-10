@@ -66,6 +66,8 @@ A scripted stand-in agent builds a small notes app step by step.
 | Claude Code and Codex: planning step through the daemon | Works on Claude Code 2.1 and Codex CLI 0.167 |
 | Claude Code: full build, verification, fixing an annotation | Works (built the demo app; all approved scenarios passed) |
 | Codex: full build with verification feedback | Implemented; only the planning step has been run so far |
+| Claude Code: describing an existing repository, answering a question annotation | Works (read-only sessions: only reading tools and Aperture's own) |
+| Codex: describing an existing repository, answering a question annotation | Implemented, not yet run |
 | Web preview, element and region annotation | Works |
 | iOS Simulator preview (needs `idb` for taps) | Works; live video with [serve-sim](https://github.com/EvanBacon/serve-sim) installed, screenshots every second or two without it |
 | Android Emulator preview (`adb`) | Works; a screenshot every few seconds |

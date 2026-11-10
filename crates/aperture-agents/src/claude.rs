@@ -25,12 +25,18 @@ pub fn args(spec: &SessionSpec) -> Vec<String> {
     .map(|s| s.to_string())
     .collect();
 
-    let mode = if spec.read_only {
-        "plan"
+    if spec.read_only {
+        // Read-only is enforced by what exists, not by plan mode: plan mode
+        // also refuses MCP tools, and these sessions must be able to report
+        // back through Aperture's. Only tools that read are available.
+        args.extend(["--permission-mode".into(), "default".into()]);
+        args.extend(["--tools".into(), "Read,Glob,Grep".into()]);
     } else {
-        spec.claude_permission_mode.as_str()
-    };
-    args.extend(["--permission-mode".into(), mode.into()]);
+        args.extend([
+            "--permission-mode".into(),
+            spec.claude_permission_mode.clone(),
+        ]);
+    }
 
     if !spec.instructions.is_empty() {
         args.extend(["--append-system-prompt".into(), spec.instructions.clone()]);
@@ -41,6 +47,12 @@ pub fn args(spec: &SessionSpec) -> Vec<String> {
         // Aperture's own tools only report to Aperture; without this every
         // call would be refused in a headless session.
         args.extend(["--allowedTools".into(), "mcp__aperture".into()]);
+        if spec.read_only {
+            // Other MCP servers from the user's configuration may offer
+            // tools that write or run commands; a read-only session gets
+            // Aperture's server alone.
+            args.push("--strict-mcp-config".into());
+        }
     }
     if let Some(session) = &spec.resume {
         args.extend(["--resume".into(), session.clone()]);
@@ -356,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn read_only_sessions_use_plan_mode() {
+    fn read_only_sessions_have_only_reading_tools() {
         let spec = SessionSpec {
             agent: aperture_core::AgentKind::Claude,
             cwd: "/tmp".into(),
@@ -370,7 +382,10 @@ mod tests {
         };
         let args = args(&spec);
         let at = args.iter().position(|a| a == "--permission-mode").unwrap();
-        assert_eq!(args[at + 1], "plan");
+        assert_eq!(args[at + 1], "default");
+        let at = args.iter().position(|a| a == "--tools").unwrap();
+        assert_eq!(args[at + 1], "Read,Glob,Grep");
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
         assert!(args.contains(&"--resume".to_string()));
         let at = args.iter().position(|a| a == "--allowedTools").unwrap();
         assert_eq!(args[at + 1], "mcp__aperture");
