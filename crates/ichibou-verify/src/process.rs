@@ -6,16 +6,32 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
+use ichibou_core::sandbox::Guard;
 use tokio::process::{Child, Command};
 
-fn command(line: &str, cwd: &Path, env: &[(String, String)], log: &Path) -> Result<Command> {
+fn command(
+    line: &str,
+    cwd: &Path,
+    env: &[(String, String)],
+    log: &Path,
+    guard: &Guard,
+) -> Result<Command> {
     let out = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(log)
         .with_context(|| format!("cannot open {}", log.display()))?;
     let err = out.try_clone()?;
-    let mut command = Command::new("sh");
+    // The command line runs under the guard: it and everything it starts
+    // cannot write where the guard forbids.
+    let mut command = match guard.prefix() {
+        Some(prefix) => {
+            let mut command = Command::new(&prefix[0]);
+            command.args(&prefix[1..]).arg("sh");
+            command
+        }
+        None => Command::new("sh"),
+    };
     command
         .arg("-c")
         .arg(line)
@@ -46,8 +62,9 @@ pub async fn run(
     env: &[(String, String)],
     log: &Path,
     timeout: Duration,
+    guard: &Guard,
 ) -> Result<Option<i32>> {
-    let mut child = command(line, cwd, env, log)?
+    let mut child = command(line, cwd, env, log, guard)?
         .spawn()
         .with_context(|| format!("cannot run `{line}`"))?;
     match tokio::time::timeout(timeout, child.wait()).await {
@@ -66,8 +83,14 @@ pub struct Background {
 }
 
 impl Background {
-    pub fn spawn(line: &str, cwd: &Path, env: &[(String, String)], log: &Path) -> Result<Self> {
-        let child = command(line, cwd, env, log)?
+    pub fn spawn(
+        line: &str,
+        cwd: &Path,
+        env: &[(String, String)],
+        log: &Path,
+        guard: &Guard,
+    ) -> Result<Self> {
+        let child = command(line, cwd, env, log, guard)?
             .spawn()
             .with_context(|| format!("cannot run `{line}`"))?;
         Ok(Self { child })

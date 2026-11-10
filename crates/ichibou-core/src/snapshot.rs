@@ -86,6 +86,36 @@ pub fn take(root: &Path) -> Result<SnapshotId> {
     Ok(SnapshotId(hex(&hasher.finalize())))
 }
 
+/// Hashes the working tree together with the ignored files that
+/// verification copies in (`verify.copy` in targets.yaml, for example
+/// `.env.test`). They are inputs to a run, so changing one must invalidate
+/// earlier verdicts just like editing a tracked file does.
+pub fn take_with(root: &Path, extra: &[String]) -> Result<SnapshotId> {
+    let tree = take(root)?;
+    let mut names: Vec<&String> = extra.iter().collect();
+    names.sort();
+    names.dedup();
+    if names.is_empty() {
+        return Ok(tree);
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(tree.0.as_bytes());
+    for name in names {
+        hasher.update([0]);
+        hasher.update(name.as_bytes());
+        hasher.update([0]);
+        // Same rule as when copying: only files inside the project count.
+        match crate::manifest::resolve_inside(root, name).and_then(|p| fs::read(p).ok()) {
+            Some(bytes) => {
+                hasher.update([1]);
+                hasher.update(&bytes);
+            }
+            None => hasher.update([0]),
+        }
+    }
+    Ok(SnapshotId(hex(&hasher.finalize())))
+}
+
 /// Copies the snapshot's files into `dest` and returns the id of what was
 /// actually copied. Callers compare it with the id they expected: if the tree
 /// changed while copying, the two differ and the copy must not be used as

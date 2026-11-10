@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::sync::Arc;
 
@@ -63,6 +64,7 @@ fi
                 dev: None,
                 verify: None,
                 app_id: None,
+                guard: true,
             }],
             ..Default::default()
         })
@@ -107,6 +109,7 @@ fn state(f: &Fixture) -> RequirementState {
         results: &f.store.results().unwrap(),
         approvals: &f.store.approvals().unwrap(),
         definitions: &definitions,
+        approved: &HashMap::new(),
         confirmations: &[],
         claims: &[],
         annotations: &[],
@@ -118,6 +121,7 @@ fn verifier(f: &Fixture) -> Verifier {
     Verifier {
         project: f.project.clone(),
         store: f.store.clone(),
+        targets: f.project.load().unwrap().targets,
     }
 }
 
@@ -226,4 +230,101 @@ async fn broken_setup_is_an_error_not_a_failure_or_pass() {
     let report = verifier(&f).run(None).await.unwrap();
     assert_eq!(report.results[0].outcome, Outcome::Error);
     assert!(report.results[0].detail.contains("nope"));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_link_planted_where_an_approved_test_goes_is_not_followed() {
+    let f = fixture();
+    let (approval, frozen) = freeze(&f.project, &f.scenario).unwrap();
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+
+    // After approval the agent replaces the test with a link to a file
+    // outside the project, hoping the restore writes through it.
+    let outside = f.project.root.parent().unwrap().join(format!(
+        "outside-{}.txt",
+        f.project.root.file_name().unwrap().to_string_lossy()
+    ));
+    fs::write(&outside, "untouched").unwrap();
+    fs::remove_file(f.project.root.join("check.sh")).unwrap();
+    std::os::unix::fs::symlink(&outside, f.project.root.join("check.sh")).unwrap();
+
+    let report = verifier(&f).run(None).await.unwrap();
+    assert_eq!(fs::read_to_string(&outside).unwrap(), "untouched");
+    // The approved check still ran, from the approved copy.
+    assert_eq!(report.results[0].outcome, Outcome::Passed, "{}", report.results[0].detail);
+    let _ = fs::remove_file(&outside);
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn commands_under_verification_cannot_touch_state_or_approved_tests() {
+    let f = fixture();
+    let state = f.project.local_dir().join("state.db");
+    // Setup tries to forge a verdict store and to weaken the approved test.
+    let mut targets = f.project.load().unwrap().targets;
+    targets.targets[0].verify = Some(VerifyEnv {
+        setup: vec![format!(
+            "echo forged > '{}' 2>/dev/null; echo 'exit 0' > check.sh 2>/dev/null; true",
+            state.with_extension("forged").display()
+        )],
+        ..Default::default()
+    });
+    f.project.save_targets(&targets).unwrap();
+    fs::write(f.project.root.join("answer.txt"), "0\n").unwrap();
+    let (approval, frozen) = freeze(&f.project, &f.scenario).unwrap();
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+
+    let report = verifier(&f).run(None).await.unwrap();
+    assert!(!state.with_extension("forged").exists());
+    // The real check ran against the wrong answer and failed.
+    assert_eq!(report.results[0].outcome, Outcome::Failed, "{}", report.results[0].detail);
+}
+
+#[tokio::test]
+async fn copied_inputs_are_part_of_the_snapshot() {
+    let f = fixture();
+    fs::write(f.project.root.join(".gitignore"), ".env.test\n").unwrap();
+    fs::write(f.project.root.join(".env.test"), "MODE=a\n").unwrap();
+    let mut targets = f.project.load().unwrap().targets;
+    targets.targets[0].verify = Some(VerifyEnv {
+        copy: vec![".env.test".into()],
+        ..Default::default()
+    });
+    f.project.save_targets(&targets).unwrap();
+    let (approval, frozen) = freeze(&f.project, &f.scenario).unwrap();
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+
+    let first = verifier(&f).run(None).await.unwrap().snapshot;
+    // An ignored file that verification copies in is an input: changing it
+    // gives a different snapshot, so earlier passes no longer count.
+    fs::write(f.project.root.join(".env.test"), "MODE=b\n").unwrap();
+    let second = verifier(&f).run(None).await.unwrap().snapshot;
+    assert_ne!(first, second);
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn a_self_sandboxing_tool_gets_a_hint_and_can_opt_out() {
+    let f = fixture();
+    // Setup runs a tool that applies its own sandbox, as SwiftPM does.
+    let mut targets = f.project.load().unwrap().targets;
+    targets.targets[0].verify = Some(VerifyEnv {
+        setup: vec!["/usr/bin/sandbox-exec -p '(version 1)(deny default)(allow process*)(allow file-read*)' /usr/bin/true".into()],
+        ..Default::default()
+    });
+    f.project.save_targets(&targets).unwrap();
+    let (approval, frozen) = freeze(&f.project, &f.scenario).unwrap();
+    f.store.approve_scenario(&approval, &frozen).unwrap();
+
+    let guarded = verifier(&f).run(None).await.unwrap();
+    if guarded.results[0].outcome == Outcome::Error {
+        // Inside the guard the tool cannot start, and the error says what to do.
+        assert!(guarded.results[0].detail.contains("guard: false"), "{}", guarded.results[0].detail);
+    }
+
+    targets.targets[0].guard = false;
+    f.project.save_targets(&targets).unwrap();
+    let open = verifier(&f).run(None).await.unwrap();
+    assert_eq!(open.results[0].outcome, Outcome::Passed, "{}", open.results[0].detail);
 }

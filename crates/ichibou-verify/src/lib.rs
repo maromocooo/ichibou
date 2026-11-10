@@ -12,7 +12,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
-use ichibou_core::manifest::{Manifest, Project};
+use ichibou_core::manifest::Project;
+use ichibou_core::sandbox::Guard;
 use ichibou_core::store::{FrozenScenario, Store};
 use ichibou_core::*;
 use chrono::Utc;
@@ -31,6 +32,9 @@ const KEEP_RESULTS: usize = 20;
 pub struct Verifier {
     pub project: Project,
     pub store: Arc<Store>,
+    /// The targets the user approved. Passed in rather than read from the
+    /// workspace, so a file changed after approval is never what runs.
+    pub targets: TargetsDoc,
 }
 
 #[derive(Debug)]
@@ -86,7 +90,7 @@ impl Verifier {
 
         let root = self.project.root.clone();
         let work = self.project.local_dir().join("verify");
-        let extras: Vec<String> = manifest
+        let extras: Vec<String> = self
             .targets
             .targets
             .iter()
@@ -109,6 +113,18 @@ impl Verifier {
         for scenario in &approved {
             restore_approved_files(&work, &scenario.frozen)?;
         }
+        // Build, app and test commands may write in the copy and in the
+        // artifacts directory, nowhere else in Ichibou's state, and never
+        // over an approved test file.
+        let guard = Guard {
+            deny: vec![ichibou_core::manifest::state_base()],
+            allow: vec![work.clone(), self.project.local_dir().join("artifacts")],
+            deny_files: approved
+                .iter()
+                .flat_map(|a| a.frozen.files.keys())
+                .map(|file| work.join(file))
+                .collect(),
+        };
 
         let mut by_target: BTreeMap<String, Vec<&Approved>> = BTreeMap::new();
         for scenario in &approved {
@@ -121,7 +137,7 @@ impl Verifier {
         let mut results = Vec::new();
         for (target, scenarios) in by_target {
             results.extend(
-                self.run_target(&manifest, &target, &scenarios, &work, &snapshot)
+                self.run_target(&target, &scenarios, &work, &snapshot, &guard)
                     .await,
             );
         }
@@ -144,11 +160,11 @@ impl Verifier {
 
     async fn run_target(
         &self,
-        manifest: &Manifest,
         target_name: &str,
         scenarios: &[&Approved],
         work: &Path,
         snapshot: &SnapshotId,
+        guard: &Guard,
     ) -> Vec<VerificationResult> {
         let fail_all = |detail: String| -> Vec<VerificationResult> {
             scenarios
@@ -166,9 +182,13 @@ impl Verifier {
                 .collect()
         };
 
-        let Some(target) = manifest.targets.targets.iter().find(|t| t.name == target_name) else {
+        let Some(target) = self.targets.targets.iter().find(|t| t.name == target_name) else {
             return fail_all(format!("target `{target_name}` is not defined in targets.yaml"));
         };
+        // A target can opt out of the guard (its tools sandbox themselves);
+        // that choice is part of the approved targets file.
+        let unguarded = Guard::default();
+        let guard = if target.guard { guard } else { &unguarded };
         let env_spec = target.verify.clone().unwrap_or_default();
         let launch = env_spec.start.clone().or_else(|| target.dev.clone());
         let setup_log = work.join(".ichibou-verify.log");
@@ -190,7 +210,7 @@ impl Verifier {
         }
 
         for command in &env_spec.setup {
-            match process::run(command, work, &[], &setup_log, SETUP_TIMEOUT).await {
+            match process::run(command, work, &[], &setup_log, SETUP_TIMEOUT, guard).await {
                 Ok(Some(0)) => {}
                 Ok(Some(code)) => {
                     return fail_all(format!(
@@ -219,7 +239,7 @@ impl Verifier {
                 }
                 None => work.to_path_buf(),
             };
-            let mut process = match Background::spawn(&fill(&launch.command), &cwd, &env, &setup_log)
+            let mut process = match Background::spawn(&fill(&launch.command), &cwd, &env, &setup_log, guard)
             {
                 Ok(process) => process,
                 Err(err) => return fail_all(format!("cannot start the app: {err:#}")),
@@ -241,7 +261,7 @@ impl Verifier {
 
         let mut results = Vec::new();
         for scenario in scenarios {
-            results.push(self.run_scenario(scenario, work, &env, snapshot).await);
+            results.push(self.run_scenario(scenario, work, &env, snapshot, guard).await);
         }
         if let Some(app) = app {
             app.stop().await;
@@ -255,6 +275,7 @@ impl Verifier {
         work: &Path,
         env: &[(String, String)],
         snapshot: &SnapshotId,
+        guard: &Guard,
     ) -> VerificationResult {
         let scenario = &approved.frozen.scenario;
         let finish = |id: String, outcome: Outcome, detail: String, artifacts: Option<String>| {
@@ -281,6 +302,12 @@ impl Verifier {
             }
         };
         let log = dir.join("log.txt");
+        // Put this scenario's approved files in place again right before it
+        // runs: setup or the app may have touched them, and another scenario
+        // may have been approved with a different version of a shared file.
+        if let Err(err) = restore_approved_files(work, &approved.frozen) {
+            return finish(id, Outcome::Error, format!("{err:#}"), Some(relative));
+        }
         let files = scenario
             .files
             .iter()
@@ -347,7 +374,7 @@ impl Verifier {
                 }
             };
 
-        let code = match process::run(&command, work, &env, &log, SCENARIO_TIMEOUT).await {
+        let code = match process::run(&command, work, &env, &log, SCENARIO_TIMEOUT, guard).await {
             Ok(code) => code,
             Err(err) => return finish(id, Outcome::Error, format!("{err:#}"), Some(relative)),
         };
@@ -388,15 +415,17 @@ impl Verifier {
 }
 
 /// Copies the snapshot and checks the copy matches what was hashed. Retries
-/// a few times because an agent may be mid-edit.
+/// a few times because an agent may be mid-edit. The returned id covers the
+/// tree and the extra (ignored) files that were copied in.
 fn copy_stable(root: &Path, work: &Path, extras: &[String]) -> Result<SnapshotId> {
     for _ in 0..3 {
         if work.exists() {
             std::fs::remove_dir_all(work).context("cannot clear the verification directory")?;
         }
-        let expected = snapshot::take(root)?;
+        let expected = snapshot::take_with(root, extras)?;
+        let tree = snapshot::take(root)?;
         let copied = snapshot::materialize(root, work, extras)?;
-        if copied == expected && snapshot::take(root)? == expected {
+        if copied == tree && snapshot::take_with(root, extras)? == expected {
             return Ok(expected);
         }
         std::thread::sleep(Duration::from_millis(500));
@@ -404,26 +433,57 @@ fn copy_stable(root: &Path, work: &Path, extras: &[String]) -> Result<SnapshotId
     bail!(Unstable)
 }
 
+/// Writes (or removes) one file inside the copy without following symbolic
+/// links: the copy reproduces links from the workspace, and a link where a
+/// test file or one of its directories should be would send the write
+/// somewhere else.
+fn write_inside(work: &Path, relative: &str, content: Option<&[u8]>) -> Result<()> {
+    use std::io::Write;
+    if !ichibou_core::manifest::is_safe_relative(relative) {
+        bail!("approved scenario file `{relative}` is not a path inside the project");
+    }
+    let parts: Vec<_> = Path::new(relative)
+        .components()
+        .filter(|c| matches!(c, std::path::Component::Normal(_)))
+        .collect();
+    let Some((name, dirs)) = parts.split_last() else {
+        bail!("approved scenario file has an empty path");
+    };
+    let mut dir = work.to_path_buf();
+    for part in dirs {
+        dir.push(part);
+        match std::fs::symlink_metadata(&dir) {
+            Ok(meta) if meta.is_dir() => {}
+            // A link or file where a directory belongs is replaced.
+            Ok(_) => {
+                std::fs::remove_file(&dir)?;
+                std::fs::create_dir(&dir)?;
+            }
+            Err(_) => std::fs::create_dir(&dir)?,
+        }
+    }
+    let full = dir.join(name);
+    match std::fs::symlink_metadata(&full) {
+        Ok(meta) if meta.is_dir() => std::fs::remove_dir_all(&full)?,
+        Ok(_) => std::fs::remove_file(&full)?,
+        Err(_) => {}
+    }
+    if let Some(bytes) = content {
+        // `create_new` fails rather than follow anything that appeared here.
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&full)?;
+        file.write_all(bytes)?;
+    }
+    Ok(())
+}
+
 /// Puts the approved version of each scenario file into the copy, so an
 /// agent's edit to a test cannot change what is being judged.
 fn restore_approved_files(work: &Path, frozen: &FrozenScenario) -> Result<()> {
     for (path, content) in &frozen.files {
-        // Never write outside the copy, whatever a stored path says.
-        if !ichibou_core::manifest::is_safe_relative(path) {
-            bail!("approved scenario file `{path}` is not a path inside the project");
-        }
-        let full = work.join(path);
-        match content {
-            Some(bytes) => {
-                if let Some(parent) = full.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&full, bytes)?;
-            }
-            None => {
-                let _ = std::fs::remove_file(&full);
-            }
-        }
+        write_inside(work, path, content.as_deref())?;
     }
     Ok(())
 }
@@ -451,9 +511,17 @@ fn shell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "'\\''"))
 }
 
+/// Explains the one failure the guard itself can cause.
+pub const NESTED_SANDBOX_HINT: &str = "A tool in this command sandboxes itself, which macOS does not allow inside Ichibou's write guard. Either turn that tool's own sandbox off for this command (Swift Package Manager: `--disable-sandbox`), or set `guard: false` on this target in targets.yaml; you will be asked to approve the change.";
+
 fn tail(path: &Path) -> String {
     let text = std::fs::read_to_string(path).unwrap_or_default();
     let chars: Vec<char> = text.chars().collect();
     let start = chars.len().saturating_sub(3000);
-    chars[start..].iter().collect()
+    let mut out: String = chars[start..].iter().collect();
+    if text.contains("sandbox_apply: Operation not permitted") {
+        out.push_str("\n\n");
+        out.push_str(NESTED_SANDBOX_HINT);
+    }
+    out
 }

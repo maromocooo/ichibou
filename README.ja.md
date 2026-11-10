@@ -23,11 +23,13 @@ Ichibou は、Claude Code や Codex に細かいフェーズ分けをさせず�
 
 Ichibou は、あなたのマシンにインストール済み・サインイン済みの公式コマンドラインツール `claude` と `codex` を子プロセスとして起動します。認証情報を読んだり保存したり中継したりはせず、モデルの API を直接呼ぶこともありません。利用量はあなた自身の Claude / ChatGPT のプランの範囲です。
 
+プレビュー中のアプリと、検証時のビルド・テストのコマンドは、Ichibou 自身の状態への書き込みを禁止した状態（macOS のサンドボックス）で起動します。エージェントが書いたコードが実行されても、承認や検証結果は書き換えられません。エージェント本体は、それぞれの仕組み（Codex はワークスペースのサンドボックス、Claude Code は権限モード）でワークスペース内に留められ、Ichibou の状態はワークスペースの外にあります。あなた自身の Claude Code の設定で任意のシェルコマンドを確認なしに許可している場合、この保護はその設定の強さまでになります。自分自身をサンドボックス化するツール（Swift Package Manager、Xcode のビルドスクリプト）はこのガードの中では起動できません。その場合は対象ごとに `targets.yaml` で `guard: false` を指定でき、承認時にその旨が表示されます。`link` に指定した依存ディレクトリ（`node_modules` など）はそのまま使われ、スナップショットには含まれません。
+
 Ichibou は、権限チェックを無効にした状態でエージェントを起動しません。書き込みを行う Claude のセッションは設定した権限モード（既定は `acceptEdits`）で動き、Codex のセッションはワークスペースのサンドボックス内で動いて、承認が必要なコマンドは Ichibou 経由で確認します。
 
 ## インストール
 
-必要なもの：macOS、Rust 1.85 以上、Node.js 20 以上、サインイン済みの [Claude Code](https://claude.com/claude-code) または [Codex CLI](https://developers.openai.com/codex)（どちらか一方で可）。
+必要なもの：macOS、Rust 1.89 以上、Node.js 22 以上、サインイン済みの [Claude Code](https://claude.com/claude-code) または [Codex CLI](https://developers.openai.com/codex)（どちらか一方で可）。
 
 ```sh
 git clone <このリポジトリ> ichibou && cd ichibou
@@ -92,7 +94,11 @@ scripts/package.sh     # dist/ichibou-<version>-<os>-<arch>.tar.gz と SHA-256 �
 ```sh
 cargo test --workspace
 npm --prefix ui run typecheck
-npm --prefix ui run e2e      # 実際のデーモンとスクリプトの代役エージェントで UI を通す
+
+# 実際のデーモンとスクリプトの代役エージェントで UI を通す:
+cargo build && npm --prefix ui run build
+npx --prefix ui playwright install chromium   # 初回のみ
+npm --prefix ui run e2e
 ```
 
 構成：`crates/ichibou-core`（モデル、状態判定、スナップショット、ストア）、`ichibou-agents`（Claude・Codex・スクリプトの各ドライバー）、`ichibou-verify`（検証ランナー）、`ichibou-server`（デーモン：API、MCP ツール、プレビュー、インスペクタ）、`ichibou-cli`、`ui/`（React）、`overlay/`（Web プレビューに注入するスクリプト）。

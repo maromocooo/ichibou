@@ -23,11 +23,13 @@ Ichibou 是一个本地工具，面向那些让 Claude Code 或 Codex 一次性�
 
 Ichibou 以子进程的方式启动你电脑上已安装并已登录的官方命令行工具 `claude` 和 `codex`。它不读取、不保存、也不转发凭据，本身也不调用任何模型 API。用量取决于你自己的 Claude 或 ChatGPT 套餐。
 
+被预览的应用以及验证时的构建和测试命令，都在禁止写入 Ichibou 自身状态的条件下启动（macOS 沙箱），因此智能体编写的代码在运行时无法改写批准记录或验证结果。智能体本身由各自的机制限制在工作区内（Codex 靠工作区沙箱，Claude Code 靠权限模式），而 Ichibou 的状态位于工作区之外。如果你自己的 Claude Code 设置允许不经确认执行任意 shell 命令，这层保护的强度就取决于那些设置。会给自己加沙箱的工具（Swift Package Manager、Xcode 构建脚本）无法在这层保护内启动；此时可以在 `targets.yaml` 中为该目标设置 `guard: false`，批准时会明确显示。在 `link` 中列出的依赖目录（例如 `node_modules`）会原样使用，不计入快照。
+
 Ichibou 绝不会在绕过权限检查的情况下启动智能体。会写入文件的 Claude 会话使用你配置的权限模式（默认 `acceptEdits`）；Codex 会话在其工作区沙箱中运行，需要批准的命令会通过 Ichibou 向你确认。
 
 ## 安装
 
-环境要求：macOS、Rust 1.85+、Node.js 20+，以及已登录的 [Claude Code](https://claude.com/claude-code) 或 [Codex CLI](https://developers.openai.com/codex)（至少其一）。
+环境要求：macOS、Rust 1.89+、Node.js 22+，以及已登录的 [Claude Code](https://claude.com/claude-code) 或 [Codex CLI](https://developers.openai.com/codex)（至少其一）。
 
 ```sh
 git clone <本仓库> ichibou && cd ichibou
@@ -92,7 +94,11 @@ scripts/package.sh     # 生成 dist/ichibou-<version>-<os>-<arch>.tar.gz 及其
 ```sh
 cargo test --workspace
 npm --prefix ui run typecheck
-npm --prefix ui run e2e      # 用真实的守护进程和脚本替身智能体跑通界面
+
+# 用真实的守护进程和脚本替身智能体跑通界面：
+cargo build && npm --prefix ui run build
+npx --prefix ui playwright install chromium   # 仅首次
+npm --prefix ui run e2e
 ```
 
 目录结构：`crates/ichibou-core`（模型、状态判定、快照、存储）、`ichibou-agents`（Claude、Codex 与脚本驱动）、`ichibou-verify`（验证运行器）、`ichibou-server`（守护进程：API、MCP 工具、预览、检查器）、`ichibou-cli`、`ui/`（React）、`overlay/`（注入到 Web 预览中的脚本）。

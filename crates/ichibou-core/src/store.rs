@@ -338,6 +338,11 @@ impl Store {
         doc.map(from_json).transpose()
     }
 
+    /// Every approved scenario entry with its frozen files.
+    pub fn frozen_scenarios(&self) -> Result<Vec<FrozenScenario>> {
+        self.all("SELECT frozen FROM approvals")
+    }
+
     pub fn revoke_approval(&self, scenario: &str) -> Result<()> {
         self.conn()
             .execute("DELETE FROM approvals WHERE scenario = ?1", [scenario])?;

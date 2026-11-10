@@ -3,17 +3,34 @@ import { type Overview, type TargetsDoc, api } from "./api";
 import { useApp } from "./app-context";
 import { useT } from "./i18n";
 
-/** Every command Ichibou would run for these targets, for the user to read. */
+/**
+ * Everything approving these targets allows: commands that will run, where
+ * they run, files brought into verification, addresses that will be
+ * contacted and apps that will be captured. Approval covers the whole file,
+ * so the whole file is shown.
+ */
 function commands(targets: TargetsDoc): string[] {
   const list: string[] = [];
+  const launch = (name: string, what: string, l: { command: string; cwd?: string | null; url?: string | null }) => {
+    list.push(`${name} · ${what}: ${l.command}${l.cwd ? `  (in ${l.cwd})` : ""}`);
+    if (l.url) list.push(`${name} · ${what} address: ${l.url}`);
+  };
   for (const target of targets.targets) {
-    if (target.dev?.command) list.push(`${target.name} · preview: ${target.dev.command}`);
+    if (target.dev) launch(target.name, "preview", target.dev);
     for (const step of target.verify?.setup ?? []) list.push(`${target.name} · verify setup: ${step}`);
-    if (target.verify?.start?.command) list.push(`${target.name} · verify start: ${target.verify.start.command}`);
+    if (target.verify?.start) launch(target.name, "verify start", target.verify.start);
+    for (const file of target.verify?.copy ?? []) list.push(`${target.name} · copies ignored file: ${file}`);
+    for (const dir of target.verify?.link ?? []) list.push(`${target.name} · links directory: ${dir}`);
+    if (target.guard === false) list.push(`${target.name} · runs WITHOUT the write guard that protects Ichibou's state`);
+    if (target.app_id) list.push(`${target.name} · ${target.kind} app shown: ${target.app_id}`);
   }
   for (const source of targets.apis) {
-    if (source.openapi_command) list.push(`${source.node} · openapi: ${source.openapi_command}`);
+    if (source.openapi_command) list.push(`${source.node} · openapi command: ${source.openapi_command}`);
+    if (source.openapi_url) list.push(`${source.node} · openapi fetched from: ${source.openapi_url}`);
+    if (source.openapi_file) list.push(`${source.node} · openapi file: ${source.openapi_file}`);
+    if (source.base_url) list.push(`${source.node} · requests sent to: ${source.base_url}`);
   }
+  for (const db of targets.databases) list.push(`${db.node} · ${db.kind} database: ${db.url}`);
   return list;
 }
 

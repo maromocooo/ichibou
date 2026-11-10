@@ -130,7 +130,7 @@ fi
         .unwrap();
     project
         .save_targets(&TargetsDoc {
-            targets: vec![Target { name: "cli".into(), kind: TargetKind::Desktop, dev: None, verify: None, app_id: None }],
+            targets: vec![Target { name: "cli".into(), kind: TargetKind::Desktop, dev: None, verify: None, app_id: None, guard: true }],
             ..Default::default()
         })
         .unwrap();
@@ -476,5 +476,87 @@ async fn inspectors_wait_for_approval_and_stay_inside_the_project() {
     let (status, body) = get("/api/inspect/db/db").await;
     assert_eq!(status, 400);
     assert!(body.contains("outside the project"), "{body}");
+    server.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn served_files_and_the_preview_proxy_refuse_what_is_not_theirs() {
+    isolate_state();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("index.html"), "<html><body><h1>hi</h1></body></html>").unwrap();
+    let project = Project::new(&root);
+    project.init().unwrap();
+    project
+        .save_targets(&TargetsDoc {
+            targets: vec![Target {
+                name: "web".into(),
+                kind: TargetKind::Web,
+                dev: Some(Launch {
+                    command: "python3 -m http.server {port} --bind 127.0.0.1".into(),
+                    cwd: None,
+                    url: Some("http://127.0.0.1:{port}".into()),
+                    port: None,
+                }),
+                verify: None,
+                app_id: None,
+                guard: true,
+            }],
+            ..Default::default()
+        })
+        .unwrap();
+    let server = ichibou_server::serve(&root, 0).await.unwrap();
+    let api = Client::new(&server);
+    let status = |path: String| {
+        let request = api.http.get(format!("{}{path}", api.base)).header("x-ichibou-token", &api.token);
+        async move { request.send().await.unwrap().status().as_u16() }
+    };
+
+    // Artifacts are served; the state database next to them is not, by any
+    // spelling of its path.
+    let local = project.local_dir();
+    fs::create_dir_all(local.join("artifacts/run")).unwrap();
+    fs::write(local.join("artifacts/run/log.txt"), "log").unwrap();
+    assert_eq!(status("/api/files/artifacts/run/log.txt".into()).await, 200);
+    assert!(local.join("state.db").exists());
+    for path in ["artifacts/../state.db", "artifacts/run/../../state.db", "state.db", "artifacts/%2e%2e/state.db"] {
+        assert_eq!(status(format!("/api/files/{path}")).await, 404, "{path}");
+    }
+
+    // The preview does not start before the commands are approved.
+    let early = api
+        .http
+        .post(format!("{}/api/previews/web/start", api.base))
+        .header("x-ichibou-token", &api.token)
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(early.status(), 400);
+    let hash = api.get("/api/overview").await["targets_hash"].clone();
+    api.post("/api/targets/approve", json!({ "hash": hash })).await;
+    api.post("/api/previews/web/start", json!({})).await;
+    let previews = api.get("/api/previews").await;
+    let url = previews[0]["url"].as_str().unwrap().to_string();
+
+    // The proxy answers to its own loopback name and adds the overlay...
+    let mut page = String::new();
+    for _ in 0..50 {
+        if let Ok(response) = api.http.get(&url).send().await {
+            if response.status().is_success() {
+                page = response.text().await.unwrap();
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    assert!(page.contains("<h1>hi</h1>") && page.contains("/__ichibou/overlay.js"), "{page}");
+    // ...and refuses a request that names another host (DNS rebinding) or
+    // comes from another site's page.
+    let rebound = api.http.get(&url).header("host", "attacker.example").send().await.unwrap();
+    assert_eq!(rebound.status(), 403);
+    let foreign = api.http.get(&url).header("origin", "https://attacker.example").send().await.unwrap();
+    assert_eq!(foreign.status(), 403);
     server.shutdown().await;
 }

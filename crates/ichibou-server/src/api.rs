@@ -372,14 +372,19 @@ async fn save_manifest(
 
 /// Serves logs, reports and screenshots from the local state directory.
 async fn file(State(engine): State<Arc<Engine>>, Path(path): Path<String>) -> Response {
+    // Only what is under `artifacts/` or `annotations/` is served, judged
+    // on the resolved path: `artifacts/../state.db` names neither.
     let base = engine.project.local_dir();
-    let allowed = path.starts_with("artifacts/") || path.starts_with("annotations/");
-    let full = base.join(&path);
-    let inside = match (full.canonicalize(), base.canonicalize()) {
-        (Ok(full), Ok(base)) => full.starts_with(base),
-        _ => false,
+    let full = match manifest::resolve_inside(&base, &path) {
+        Some(full) => full,
+        None => return StatusCode::NOT_FOUND.into_response(),
     };
-    if !allowed || !inside {
+    let inside = ["artifacts", "annotations"].iter().any(|dir| {
+        base.join(dir)
+            .canonicalize()
+            .is_ok_and(|allowed| full.starts_with(allowed))
+    });
+    if !inside {
         return StatusCode::NOT_FOUND.into_response();
     }
     match tokio::fs::read(&full).await {

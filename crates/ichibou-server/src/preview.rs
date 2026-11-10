@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
+use ichibou_core::sandbox::Guard;
 use ichibou_core::*;
 use ichibou_verify::process::{self, Background};
 use axum::body::Body;
@@ -37,6 +38,10 @@ const OVERLAY_PATH: &str = "/__ichibou/overlay.js";
 
 pub struct Preview {
     kind: TargetKind,
+    /// The app to capture, as approved when the preview was started. It is
+    /// not read again from the workspace: with screen recording allowed, a
+    /// changed file must not be able to point the capture at another app.
+    app_id: Option<String>,
     app: Option<Background>,
     /// Where the app itself listens (web only).
     upstream: Option<String>,
@@ -69,11 +74,10 @@ pub struct Previews {
     running: tokio::sync::Mutex<HashMap<String, Preview>>,
 }
 
+/// A target from the approved targets file.
 fn find_target(engine: &Engine, name: &str) -> Result<Target> {
     engine
-        .project
-        .load()?
-        .targets
+        .approved_targets()?
         .targets
         .into_iter()
         .find(|t| t.name == name)
@@ -130,9 +134,6 @@ impl Previews {
     }
 
     pub async fn start(&self, engine: &Arc<Engine>, name: &str) -> Result<()> {
-        if !engine.targets_approved() {
-            bail!("approve the commands in targets.yaml before starting a preview");
-        }
         let target = find_target(engine, name)?;
         self.stop(engine, name).await;
 
@@ -143,6 +144,7 @@ impl Previews {
         let _ = std::fs::remove_file(&log);
         let mut preview = Preview {
             kind: target.kind,
+            app_id: target.app_id.clone(),
             app: None,
             upstream: None,
             url: None,
@@ -164,7 +166,18 @@ impl Previews {
                 None => engine.project.root.clone(),
             };
             let env = vec![("PORT".to_string(), port.to_string())];
-            preview.app = Some(Background::spawn(&fill(&launch.command), &cwd, &env, &log)?);
+            let guard = if target.guard {
+                Guard::state()
+            } else {
+                Guard::default()
+            };
+            preview.app = Some(Background::spawn(
+                &fill(&launch.command),
+                &cwd,
+                &env,
+                &log,
+                &guard,
+            )?);
             preview.upstream = launch.url.as_deref().map(fill);
         }
 
@@ -176,6 +189,10 @@ impl Previews {
             let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
             let addr = listener.local_addr()?;
             let state = Arc::new(Proxy {
+                hosts: [
+                    format!("127.0.0.1:{}", addr.port()),
+                    format!("localhost:{}", addr.port()),
+                ],
                 upstream: upstream.trim_end_matches('/').to_string(),
                 ui_origin: format!("http://127.0.0.1:{}", engine.port()),
                 target: name.to_string(),
@@ -248,13 +265,12 @@ impl Previews {
         }
     }
 
-    async fn kind(&self, engine: &Engine, name: &str) -> Result<(TargetKind, Option<String>)> {
-        if let Some(preview) = self.running.lock().await.get(name) {
-            let target = find_target(engine, name)?;
-            return Ok((preview.kind, target.app_id));
+    /// Kind and app of a running preview, as approved when it was started.
+    async fn kind(&self, _engine: &Engine, name: &str) -> Result<(TargetKind, Option<String>)> {
+        match self.running.lock().await.get(name) {
+            Some(preview) => Ok((preview.kind, preview.app_id.clone())),
+            None => bail!("start the preview of `{name}` first"),
         }
-        let target = find_target(engine, name)?;
-        Ok((target.kind, target.app_id))
     }
 
     /// One screenshot of a native target, as (content type, bytes).
@@ -426,6 +442,7 @@ async fn start_ios_stream(engine: &Engine, name: &str) -> Result<(Background, St
         &engine.project.root,
         &[],
         &log,
+        &Guard::state(),
     )?;
     // The helper prints one JSON line with its URLs once it is ready.
     for _ in 0..80 {
@@ -654,6 +671,8 @@ exit(1)
 // ---------------------------------------------------------------------------
 
 struct Proxy {
+    /// `host:port` values this proxy answers to.
+    hosts: [String; 2],
     upstream: String,
     ui_origin: String,
     target: String,
@@ -686,6 +705,24 @@ fn inject_overlay(html: &str) -> String {
 }
 
 async fn proxy(State(proxy): State<Arc<Proxy>>, request: Request) -> Response {
+    // Only requests addressed to this proxy by its loopback name are served.
+    // A page on another site that resolves its own host name to 127.0.0.1
+    // (DNS rebinding) sends that name as Host and is refused; the app behind
+    // the proxy cannot make this check itself, because it sees the proxy's
+    // request, not the browser's.
+    let (host_ok, origin_ok) = {
+        let text = |name: HeaderName| request.headers().get(name).and_then(|v| v.to_str().ok());
+        let host_ok = text(header::HOST).is_some_and(|h| proxy.hosts.iter().any(|a| a == h));
+        // Browsers send Origin on WebSockets and cross-origin requests. When
+        // present it must be this proxy's own origin.
+        let origin_ok = text(header::ORIGIN)
+            .is_none_or(|o| proxy.hosts.iter().any(|a| o == format!("http://{a}")));
+        (host_ok, origin_ok)
+    };
+    if !host_ok || !origin_ok {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+
     let path_and_query = request
         .uri()
         .path_and_query()

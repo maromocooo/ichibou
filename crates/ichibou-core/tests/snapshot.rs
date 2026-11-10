@@ -177,3 +177,33 @@ fn manifest_paths_cannot_leave_the_project() {
     assert!(fs::read_dir(&dest).unwrap().all(|e| e.unwrap().file_name() != "secret.txt"));
     assert_eq!(fs::read_to_string(dir.path().join("secret.txt")).unwrap(), "secret");
 }
+
+#[cfg(unix)]
+#[test]
+fn manifest_writes_do_not_follow_links() {
+    isolate_state();
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("project");
+    fs::create_dir_all(root.join(".ichibou")).unwrap();
+    let victim = dir.path().join("victim.txt");
+    fs::write(&victim, "untouched").unwrap();
+    let project = Project::new(&root);
+    let doc = RequirementsDoc::default();
+
+    // A link where the file itself goes: the link is replaced, not followed.
+    std::os::unix::fs::symlink(&victim, root.join(".ichibou/requirements.yaml")).unwrap();
+    // A link where the old fixed temporary name was.
+    std::os::unix::fs::symlink(&victim, root.join(".ichibou/requirements.yaml.tmp")).unwrap();
+    project.save_requirements(&doc).unwrap();
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "untouched");
+    assert!(fs::symlink_metadata(root.join(".ichibou/requirements.yaml")).unwrap().is_file());
+
+    // The manifest directory itself being a link is refused outright.
+    let elsewhere = dir.path().join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let other = dir.path().join("other-project");
+    fs::create_dir_all(&other).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, other.join(".ichibou")).unwrap();
+    assert!(Project::new(&other).save_requirements(&doc).is_err());
+    assert!(fs::read_dir(&elsewhere).unwrap().next().is_none());
+}

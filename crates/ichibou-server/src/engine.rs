@@ -242,14 +242,14 @@ impl Engine {
         if let Some(id) = lock(&self.snapshot).clone() {
             return Ok(id);
         }
-        let id = snapshot::take(&self.project.root)?;
+        let id = snapshot::take_with(&self.project.root, &self.snapshot_extras())?;
         *lock(&self.snapshot) = Some(id.clone());
         Ok(id)
     }
 
     /// Called when files changed. Returns true when the snapshot moved.
     pub fn refresh_snapshot(&self) -> Result<bool> {
-        let id = snapshot::take(&self.project.root)?;
+        let id = snapshot::take_with(&self.project.root, &self.snapshot_extras())?;
         let mut cached = lock(&self.snapshot);
         let changed = cached.as_ref() != Some(&id);
         *cached = Some(id);
@@ -300,11 +300,18 @@ impl Engine {
         let results = self.store.results()?;
         let approvals = self.store.approvals()?;
         let confirmations = self.store.confirmations()?;
+        let approved: HashMap<String, Scenario> = self
+            .store
+            .frozen_scenarios()?
+            .into_iter()
+            .map(|f| (f.scenario.id.clone(), f.scenario))
+            .collect();
         let evidence = Evidence {
             current: &current,
             results: &results,
             approvals: &approvals,
             definitions: &definitions,
+            approved: &approved,
             confirmations: &confirmations,
             claims: &claims,
             annotations: &annotations,
@@ -320,6 +327,33 @@ impl Engine {
         });
         status.complete = status.complete && !unlinked_fix && self.requirements_approved();
         Ok((manifest, status))
+    }
+
+    /// The targets the user approved. The file is read once: the bytes
+    /// whose hash matches the approval are the bytes that are parsed, so a
+    /// file swapped after the check is never what gets used. Everything that
+    /// runs a command, opens a URL or connects to a database goes through
+    /// here.
+    pub fn approved_targets(&self) -> Result<TargetsDoc> {
+        let bytes = std::fs::read(self.project.manifest_dir().join("targets.yaml")).unwrap_or_default();
+        if self.store.kv_get("targets_approved")? != Some(hash(&bytes)) {
+            bail!("approve targets.yaml first: its commands and addresses have changed since you last reviewed them");
+        }
+        manifest::parse(&bytes)
+    }
+
+    /// Ignored files that verification copies in; they count as part of the
+    /// snapshot.
+    fn snapshot_extras(&self) -> Vec<String> {
+        self.approved_targets()
+            .map(|t| {
+                t.targets
+                    .iter()
+                    .filter_map(|t| t.verify.as_ref())
+                    .flat_map(|v| v.copy.iter().cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Hash of a manifest file as it is on disk now.
@@ -632,19 +666,22 @@ impl Engine {
     }
 
     async fn verify_once(self: &Arc<Self>) {
-        if !self.targets_approved() {
-            let _ = self.store.append_event(
-                None,
-                "verify_blocked",
-                &serde_json::json!({ "reason": "targets.yaml commands are not approved" }),
-            );
-            return;
-        }
-        let verifier = Verifier {
-            project: self.project.clone(),
-            store: self.store.clone(),
-        };
         for attempt in 0..5 {
+            // Checked on every attempt, not once: the file may change while
+            // waiting for the workspace to settle.
+            let Ok(targets) = self.approved_targets() else {
+                let _ = self.store.append_event(
+                    None,
+                    "verify_blocked",
+                    &serde_json::json!({ "reason": "targets.yaml commands are not approved" }),
+                );
+                return;
+            };
+            let verifier = Verifier {
+                project: self.project.clone(),
+                store: self.store.clone(),
+                targets,
+            };
             match verifier.run(None).await {
                 Ok(report) => {
                     *lock(&self.last_verified) = Some(report.snapshot.clone());

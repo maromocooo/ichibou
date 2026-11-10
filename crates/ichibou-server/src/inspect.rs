@@ -11,11 +11,12 @@ use serde_json::{json, Value};
 
 use crate::engine::Engine;
 
+/// An API's sources, from the approved targets file: nothing an agent wrote
+/// into targets.yaml is fetched, run or connected to before the user has
+/// approved that exact version.
 fn api_source(engine: &Engine, node: &str) -> Result<ApiSource> {
     engine
-        .project
-        .load()?
-        .targets
+        .approved_targets()?
         .apis
         .into_iter()
         .find(|a| a.node == node)
@@ -39,19 +40,8 @@ fn parse_spec(text: &str) -> Result<Value> {
 }
 
 /// Loads the OpenAPI document for an API node.
-/// targets.yaml sits in the workspace, so an agent can write URLs into it.
-/// Nothing in it is fetched, connected to or run until the user has approved
-/// that exact version of the file.
-fn require_approval(engine: &Engine) -> Result<()> {
-    if !engine.targets_approved() {
-        bail!("approve targets.yaml first: its URLs and commands have changed since you last reviewed them");
-    }
-    Ok(())
-}
-
 pub async fn openapi(engine: &Engine, node: &str) -> Result<Value> {
     let source = api_source(engine, node)?;
-    require_approval(engine)?;
     let spec = if let Some(file) = &source.openapi_file {
         let path = inside_project(engine, file)
             .with_context(|| format!("{file} does not exist yet"))?;
@@ -109,7 +99,6 @@ pub struct TryRequest {
 /// response. Only that URL can be reached, so this is not an open proxy.
 pub async fn try_request(engine: &Engine, node: &str, request: TryRequest) -> Result<Value> {
     let source = api_source(engine, node)?;
-    require_approval(engine)?;
     let base = source
         .base_url
         .context("set `base_url` for this API in targets.yaml to send requests")?;
@@ -179,14 +168,11 @@ pub struct Table {
 /// Reads the structure of the database behind a node, as it exists now.
 pub async fn database(engine: &Engine, node: &str) -> Result<Value> {
     let source = engine
-        .project
-        .load()?
-        .targets
+        .approved_targets()?
         .databases
         .into_iter()
         .find(|d| d.node == node)
         .ok_or_else(|| anyhow!("no database is registered for `{node}` in targets.yaml"))?;
-    require_approval(engine)?;
     let tables = match source.kind {
         DatabaseKind::Sqlite => {
             let relative = source

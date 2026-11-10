@@ -48,6 +48,8 @@ export interface Target {
   dev?: Launch | null;
   verify?: { setup: string[]; start?: Launch | null; copy: string[]; link: string[] } | null;
   app_id?: string | null;
+  /** False when the target's commands run without the write guard. */
+  guard?: boolean;
 }
 
 export interface ApiSource {

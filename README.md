@@ -23,11 +23,13 @@ The name is the Japanese word 一望 (*ichibō*, "ee-chee-boh"): taking in the w
 
 Ichibou starts the official `claude` and `codex` command-line tools that are already installed and signed in on your machine, as child processes. It does not read, store or forward credentials, and it does not talk to any model API itself. Usage is whatever your own Claude or ChatGPT plan allows.
 
+The previewed app and the build and test commands of a verification run are started with writes to Ichibou's own state denied (macOS sandbox), so code an agent wrote cannot rewrite approvals or verdicts when it runs. The agents themselves are kept to the workspace by their own means — Codex by its workspace sandbox, Claude Code by its permission mode — and Ichibou's state lives outside the workspace. If your own Claude Code settings allow arbitrary shell commands without asking, that protection is only as strong as those settings. Tools that sandbox themselves (the Swift Package Manager, Xcode build scripts) cannot start inside that guard; a target can set `guard: false` in `targets.yaml`, which you see and approve. Dependency directories you list under `link` (for example `node_modules`) are used as they are and are not part of the snapshot.
+
 Ichibou never starts an agent with permission checks bypassed. Claude sessions that write use the permission mode you configure (`acceptEdits` by default); Codex sessions run in its workspace sandbox and ask through Ichibou before running commands that need approval.
 
 ## Install
 
-Requirements: macOS, Rust 1.85+, Node.js 20+, and at least one of [Claude Code](https://claude.com/claude-code) or the [Codex CLI](https://developers.openai.com/codex), signed in.
+Requirements: macOS, Rust 1.89+, Node.js 22+, and at least one of [Claude Code](https://claude.com/claude-code) or the [Codex CLI](https://developers.openai.com/codex), signed in.
 
 ```sh
 git clone <this repository> ichibou && cd ichibou
@@ -92,7 +94,11 @@ The binary carries the UI inside it; the archive is all that needs to be shipped
 ```sh
 cargo test --workspace
 npm --prefix ui run typecheck
-npm --prefix ui run e2e      # the UI against the real daemon, with the scripted agent
+
+# The UI against the real daemon, with the scripted agent:
+cargo build && npm --prefix ui run build
+npx --prefix ui playwright install chromium   # once
+npm --prefix ui run e2e
 ```
 
 Layout: `crates/ichibou-core` (model, status rules, snapshots, store), `ichibou-agents` (Claude, Codex and scripted drivers), `ichibou-verify` (verification runner), `ichibou-server` (daemon: API, MCP tools, previews, inspectors), `ichibou-cli`, `ui/` (React), `overlay/` (script injected into web previews).

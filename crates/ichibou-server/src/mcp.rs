@@ -75,7 +75,8 @@ pub fn tools() -> Vec<Value> {
                     "kind": { "type": "string", "enum": ["web", "ios", "android", "desktop"] },
                     "dev": { "type": "object", "description": "Live preview: { command, cwd?, url? with {port}, port? }" },
                     "verify": { "type": "object", "description": "Verification in a clean copy: { setup: [commands], start: { command, url }, copy: [ignored files], link: [ignored dirs such as node_modules] }" },
-                    "app_id": { "type": "string" }
+                    "app_id": { "type": "string" },
+                    "guard": { "type": "boolean", "description": "Default true: commands run under a write guard that protects Ichibou's state. Set false only when a tool in these commands sandboxes itself (Swift Package Manager, Xcode build scripts) and fails with `sandbox_apply: Operation not permitted`. The user sees and approves this." }
                 }, "required": ["name", "kind"] } },
                 "apis": { "type": "array", "items": { "type": "object", "properties": {
                     "node": { "type": "string" }, "openapi_file": { "type": "string" },

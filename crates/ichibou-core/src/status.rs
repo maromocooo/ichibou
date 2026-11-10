@@ -155,6 +155,11 @@ pub struct Evidence<'a> {
     pub approvals: &'a [ScenarioApproval],
     /// Scenario id -> definition hash of the working tree.
     pub definitions: &'a HashMap<String, String>,
+    /// Scenario id -> the scenario entry the user approved. What an approved
+    /// scenario covers is read from here, not from the manifest an agent can
+    /// edit: otherwise adding a requirement to a passing scenario's `covers`
+    /// would mark that requirement as verified.
+    pub approved: &'a HashMap<String, Scenario>,
     pub confirmations: &'a [ManualConfirmation],
     /// Claims of runs that are still alive.
     pub claims: &'a [Claim],
@@ -322,7 +327,10 @@ fn requirement_status(
                 .scenarios
                 .iter()
                 .filter(|s| {
-                    s.covers
+                    ev.approved
+                        .get(&s.id)
+                        .unwrap_or(s)
+                        .covers
                         .iter()
                         .any(|c| c.requirement == req.id && c.criterion == criterion.id)
                 })
@@ -522,6 +530,7 @@ mod tests {
         results: Vec<VerificationResult>,
         approvals: Vec<ScenarioApproval>,
         definitions: HashMap<String, String>,
+        approved: HashMap<String, Scenario>,
         confirmations: Vec<ManualConfirmation>,
         claims: Vec<Claim>,
         annotations: Vec<Annotation>,
@@ -542,6 +551,7 @@ mod tests {
                 results: vec![],
                 approvals,
                 definitions: HashMap::new(),
+                approved: HashMap::new(),
                 confirmations: vec![],
                 claims: vec![],
                 annotations: vec![],
@@ -568,6 +578,7 @@ mod tests {
                 results: &self.results,
                 approvals: &self.approvals,
                 definitions: &self.definitions,
+                approved: &self.approved,
                 confirmations: &self.confirmations,
                 claims: &self.claims,
                 annotations: &self.annotations,
@@ -657,6 +668,30 @@ mod tests {
 
         w.approvals.retain(|a| a.scenario != "sa");
         assert_ne!(state(&w.status(&m), "A"), RequirementState::Done);
+    }
+
+    #[test]
+    fn coverage_comes_from_the_approved_scenario() {
+        let mut m = manifest();
+        let mut w = World::new();
+        // The user approved `sa` as covering A only, and it passes.
+        w.approved.insert("sa".into(), m.scenarios.scenarios[0].clone());
+        w.result("sa", Outcome::Passed, "s1", "d1");
+        // An agent edits the manifest so `sa` also claims to cover C, and
+        // drops C's own scenario.
+        m.scenarios.scenarios[0].covers.push(Coverage {
+            requirement: "C".into(),
+            criterion: "c1".into(),
+        });
+        m.scenarios.scenarios.retain(|s| s.id != "sc");
+        w.definitions.insert("sa".into(), "d2".into());
+        let s = w.status(&m);
+        assert_eq!(state(&s, "A"), RequirementState::Done);
+        assert_ne!(state(&s, "C"), RequirementState::Done);
+        assert_eq!(
+            s.requirements[2].criteria[0].state,
+            CriterionState::NoScenario
+        );
     }
 
     #[test]

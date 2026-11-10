@@ -6,6 +6,7 @@
 
 pub mod manifest;
 pub mod model;
+pub mod sandbox;
 pub mod snapshot;
 pub mod status;
 pub mod store;

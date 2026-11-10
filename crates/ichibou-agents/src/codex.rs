@@ -355,11 +355,16 @@ impl Protocol {
             }
         }
         let mut elicitation = false;
+        // The user decides on what is shown, so show the request itself:
+        // long enough for a whole command line or change list.
         let approval = |kind: &str, detail: String| AgentEvent::ApprovalRequest {
             id: id.to_string(),
             kind: kind.to_string(),
-            detail: truncate(&detail, 400),
+            detail: truncate(&detail, 8000),
         };
+        // Everything Codex sent about a request, for kinds without one
+        // obvious field to show.
+        let everything = || serde_json::to_string_pretty(params).unwrap_or_default();
         let event = match method {
             "item/commandExecution/requestApproval" | "execCommandApproval" => {
                 let command = match &params["command"] {
@@ -369,18 +374,23 @@ impl Protocol {
                         .filter_map(Value::as_str)
                         .collect::<Vec<_>>()
                         .join(" "),
-                    _ => params["reason"].as_str().unwrap_or("").to_string(),
+                    _ => everything(),
                 };
-                approval("command", command)
+                let cwd = params["cwd"].as_str().unwrap_or("");
+                let reason = params["reason"].as_str().unwrap_or("");
+                let mut detail = command;
+                if !cwd.is_empty() {
+                    detail.push_str(&format!("\nin {cwd}"));
+                }
+                if !reason.is_empty() {
+                    detail.push_str(&format!("\nreason: {reason}"));
+                }
+                approval("command", detail)
             }
-            "item/fileChange/requestApproval" | "applyPatchApproval" => approval(
-                "file_change",
-                params["reason"].as_str().unwrap_or("").to_string(),
-            ),
-            "item/permissions/requestApproval" => approval(
-                "permissions",
-                params["reason"].as_str().unwrap_or("").to_string(),
-            ),
+            "item/fileChange/requestApproval" | "applyPatchApproval" => {
+                approval("file_change", everything())
+            }
+            "item/permissions/requestApproval" => approval("permissions", everything()),
             "mcpServer/elicitation/request" => {
                 // Codex asks before calling an MCP tool. Ichibou's own tools
                 // only report to Ichibou, so they are always allowed; any
@@ -649,6 +659,13 @@ mod tests {
         assert!(replies.is_empty());
         let AgentEvent::ApprovalRequest { id, detail, .. } = &events[0] else { panic!() };
         assert_eq!(detail, "npm install");
+        // A long command is shown whole, with where it would run.
+        let long = format!("echo {} && rm -rf build", "x".repeat(900));
+        let (events, _) = p.incoming(json!({ "id": 70, "method": "item/commandExecution/requestApproval",
+            "params": { "command": long, "cwd": "/work/app" } }));
+        let AgentEvent::ApprovalRequest { detail, .. } = &events[0] else { panic!() };
+        assert!(detail.ends_with("&& rm -rf build\nin /work/app"), "{detail}");
+        p.command(Command::Approve { id: "70".into(), allow: false });
         let out = p.command(Command::Approve { id: id.clone(), allow: true });
         assert_eq!(out[0], json!({ "id": 7, "result": { "decision": "accept" } }));
 

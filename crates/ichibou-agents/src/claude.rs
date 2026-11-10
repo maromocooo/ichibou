@@ -65,6 +65,10 @@ pub async fn start(spec: SessionSpec) -> Result<Session> {
         .program
         .clone()
         .unwrap_or_else(|| "claude".into());
+    // The agent itself is not wrapped in Ichibou's sandbox: both CLIs
+    // sandbox the commands they run, and macOS refuses that inside another
+    // sandbox. What keeps an agent out of Ichibou's state is its own
+    // confinement to the workspace (the state lives outside it).
     let mut child = Process::new(&program)
         .args(args(&spec))
         .current_dir(&spec.cwd)

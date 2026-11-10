@@ -57,9 +57,10 @@ export function AgentPanel() {
       {overview.approvals.map((approval) => (
         <div key={`${approval.run}-${approval.id}`} className="approval">
           <strong>{t("agent.wants")}</strong>
-          <div className="mono">
+          {/* Shown whole: the user is deciding on exactly this. */}
+          <pre className="log">
             {approval.kind}: {approval.detail}
-          </div>
+          </pre>
           <div className="row">
             <button className="primary" onClick={() => act(() => api.approval(approval.run, approval.id, true))}>
               {t("agent.approve")}

@@ -115,6 +115,21 @@ pub struct Target {
     /// iOS bundle id / Android package / macOS app name, depending on kind.
     #[serde(default)]
     pub app_id: Option<String>,
+    /// Whether this target's commands run under Ichibou's write guard (see
+    /// `sandbox`). On by default. Tools that sandbox themselves — the Swift
+    /// Package Manager, Xcode build scripts — cannot start inside another
+    /// sandbox on macOS, so such a target can turn the guard off; the user
+    /// sees that when approving targets.yaml.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub guard: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_yes(value: &bool) -> bool {
+    *value
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
