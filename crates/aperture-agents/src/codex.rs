@@ -168,7 +168,10 @@ impl Protocol {
         let mut params = json!({
             "cwd": self.cwd,
             "sandbox": if self.read_only { "read-only" } else { "workspace-write" },
-            "approvalPolicy": if self.read_only { "never" } else { "on-request" },
+            // "never" would also refuse MCP tool calls, and read-only
+            // sessions must reach Aperture's tools. Approvals are asked for,
+            // and this driver answers them itself for read-only sessions.
+            "approvalPolicy": "on-request",
         });
         if !self.instructions.is_empty() {
             params["developerInstructions"] = json!(self.instructions);
@@ -331,6 +334,26 @@ impl Protocol {
         id: Value,
         params: &Value,
     ) -> (Vec<AgentEvent>, Vec<Value>) {
+        // A read-only session never gets more access: anything it asks for
+        // beyond Aperture's own tools is declined without involving the user.
+        if self.read_only {
+            let aperture = method == "mcpServer/elicitation/request"
+                && params["serverName"].as_str() == Some("aperture");
+            let result = match method {
+                "mcpServer/elicitation/request" => {
+                    json!({ "action": if aperture { "accept" } else { "decline" }, "content": {} })
+                }
+                "item/commandExecution/requestApproval"
+                | "execCommandApproval"
+                | "item/fileChange/requestApproval"
+                | "applyPatchApproval"
+                | "item/permissions/requestApproval" => json!({ "decision": "decline" }),
+                _ => Value::Null,
+            };
+            if !result.is_null() {
+                return (vec![], vec![json!({ "id": id, "result": result })]);
+            }
+        }
         let mut elicitation = false;
         let approval = |kind: &str, detail: String| AgentEvent::ApprovalRequest {
             id: id.to_string(),
@@ -662,6 +685,23 @@ mod tests {
         assert_eq!(out[1]["method"], "thread/resume");
         assert_eq!(out[1]["params"]["threadId"], "th9");
         assert_eq!(out[1]["params"]["sandbox"], "read-only");
-        assert_eq!(out[1]["params"]["approvalPolicy"], "never");
+        assert_eq!(out[1]["params"]["approvalPolicy"], "on-request");
+        p.incoming(json!({ "id": 2, "result": { "thread": { "id": "th9" } } }));
+
+        // Aperture's tools are allowed; everything else is declined without
+        // asking the user.
+        let (events, replies) = p.incoming(json!({ "id": 5, "method": "mcpServer/elicitation/request",
+            "params": { "serverName": "aperture", "threadId": "th9", "message": "", "mode": "form", "requestedSchema": {} } }));
+        assert!(events.is_empty());
+        assert_eq!(replies[0]["result"]["action"], "accept");
+        let (events, replies) = p.incoming(json!({ "id": 6, "method": "mcpServer/elicitation/request",
+            "params": { "serverName": "other", "threadId": "th9", "message": "", "mode": "form", "requestedSchema": {} } }));
+        assert!(events.is_empty());
+        assert_eq!(replies[0]["result"]["action"], "decline");
+        for (id, method) in [(7, "item/commandExecution/requestApproval"), (8, "item/fileChange/requestApproval"), (9, "item/permissions/requestApproval")] {
+            let (events, replies) = p.incoming(json!({ "id": id, "method": method, "params": { "command": "rm -rf x" } }));
+            assert!(events.is_empty(), "{method}");
+            assert_eq!(replies[0], json!({ "id": id, "result": { "decision": "decline" } }));
+        }
     }
 }
